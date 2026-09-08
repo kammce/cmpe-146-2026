@@ -95,6 +95,14 @@
         font-size: 0.8rem;
       }
 
+      .how-it-works {
+        max-width: 900px;
+        margin: 18px auto 0;
+        padding: 14px 18px;
+        font-size: 0.85rem;
+        line-height: 1.4;
+      }
+
       .box .label {
         color: var(--orange);
         font-size: 0.8rem;
@@ -314,13 +322,6 @@
           <span>CH3 On-Time</span><span class="val" id="mCh3">75%</span>
         </div>
 
-        <div class="box">
-          <div class="label">How it works</div>
-          Counter increments by 1 on every clock tick. It resets to 0 the
-          instant it reaches the Load Register. Each channel's pin is HIGH
-          while Counter &lt; its Compare Register, and LOW otherwise.
-        </div>
-
         <h2 style="margin-top: 4px">Registers</h2>
         <div class="reg-row">
           <span
@@ -479,6 +480,13 @@
 
         <button id="resetBtn">Reset View</button>
       </div>
+    </div>
+
+    <div class="box how-it-works">
+      <div class="label">How it works</div>
+      Counter increments by 1 on every clock tick. It resets to 0 the instant
+      it reaches the Load Register. Each channel's pin is HIGH while Counter
+      &lt; its Compare Register, and LOW otherwise.
     </div>
 
     <script>

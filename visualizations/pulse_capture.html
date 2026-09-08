@@ -96,6 +96,13 @@
         line-height: 1.4;
       }
 
+      .how-it-works {
+        max-width: 900px;
+        margin: 18px auto 0;
+        padding: 14px 18px;
+        font-size: 0.85rem;
+      }
+
       .box .label {
         color: var(--orange);
         font-size: 0.8rem;
@@ -335,19 +342,16 @@
           >
         </div>
 
-        <div class="box">
-          <div class="label">How it works</div>
-          The counter is held at 0 while the input pin is LOW. The instant
-          the pin goes HIGH (rising edge), the counter is zeroed and starts
-          counting on every clock tick after that. The instant the pin goes
-          LOW again (falling edge), the current count is latched into the
-          Capture Register. Because the rising-edge tick itself reads 0, the
-          captured value is one tick less than the configured pulse width --
-          a classic edge-counting gotcha worth watching for on real
-          hardware.
-        </div>
-
         <h2 style="margin-top: 4px">Registers</h2>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--red)"></span
+            >Load Register</span
+          ><span class="val" id="regLoad">16</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regLoadHex">0x10</span>
+        </div>
         <div class="reg-row">
           <span
             ><span class="reg-swatch" style="background: var(--yellow)"></span
@@ -414,13 +418,27 @@
 
         <div class="control-group">
           <label
+            >Load Register (Limit): <span id="loadVal">16</span> ticks</label
+          >
+          <input
+            type="range"
+            id="loadRange"
+            min="1"
+            max="32"
+            step="1"
+            value="16"
+          />
+        </div>
+
+        <div class="control-group">
+          <label
             >Pulse Width: <span id="pulseWidthVal">8</span> ticks</label
           >
           <input
             type="range"
             id="pulseWidthRange"
             min="1"
-            max="32"
+            max="48"
             step="1"
             value="8"
           />
@@ -450,6 +468,20 @@
       </div>
     </div>
 
+    <div class="box how-it-works">
+      <div class="label">How it works</div>
+      The counter is held at 0 while the input pin is LOW. The instant the
+      pin goes HIGH (rising edge), the counter is zeroed and starts counting
+      on every clock tick after that. The instant the pin goes LOW again
+      (falling edge), the current count is latched into the Capture
+      Register. Because the rising-edge tick itself reads 0, the captured
+      value is one tick less than the configured pulse width -- a classic
+      edge-counting gotcha worth watching for on real hardware. The counter
+      can never count past the Load Register -- if a pulse stays high
+      longer than that, the counter saturates there and that becomes the
+      captured value once the pulse finally falls.
+    </div>
+
     <script>
       // ---- DOM refs ----
       const clockCanvas = document.getElementById("clockCanvas");
@@ -463,6 +495,7 @@
       const speedMediumBtn = document.getElementById("speedMedium");
       const speedHighBtn = document.getElementById("speedHigh");
       const clockDesc = document.getElementById("clockDesc");
+      const loadRange = document.getElementById("loadRange");
       const pulseWidthRange = document.getElementById("pulseWidthRange");
       const voltageSelect = document.getElementById("voltageSelect");
       const triggerPulseBtn = document.getElementById("triggerPulseBtn");
@@ -484,6 +517,7 @@
       // instead of being duplicated as JS literals -- edit the markup in the
       // file and both the on-load state and Reset View pick it up.
       const DEFAULTS = {
+        load: parseInt(loadRange.value, 10),
         pulseWidth: parseInt(pulseWidthRange.value, 10),
         vsupply: parseFloat(voltageSelect.value),
         speed: speedLowBtn.classList.contains("active")
@@ -494,6 +528,7 @@
       };
 
       const state = {
+        load: DEFAULTS.load,
         pulseWidth: DEFAULTS.pulseWidth,
         vsupply: DEFAULTS.vsupply,
         speed: DEFAULTS.speed,
@@ -579,8 +614,10 @@
           // Zero condition: the rising edge resets the counter right here.
           sim.counter = 0;
         } else if (pulse.level === 1) {
-          // Still high -- keep counting.
-          sim.counter += 1;
+          // Still high -- keep counting, but the counter can never count
+          // past the Load Register. If the pulse outlasts that limit, the
+          // counter saturates there and that becomes the eventual capture.
+          sim.counter = Math.min(sim.counter + 1, state.load);
         } else if (edge.falling) {
           // Falling edge: latch whatever the counter currently holds. Leave
           // it displayed at that value for this one tick (a visible peak)
@@ -598,9 +635,11 @@
         });
       }
 
-      // Manual: how many ticks stay visible in the scrolling window.
+      // Manual: how many ticks stay visible in the scrolling window -- sized
+      // off whichever of Load Register or Pulse Width is larger, so a long
+      // pulse (demonstrating saturation) or a large limit both stay legible.
       function visibleTicks() {
-        return Math.max(24, Math.min(150, state.pulseWidth * 4));
+        return Math.max(24, Math.min(150, Math.max(state.load, state.pulseWidth) * 3));
       }
 
       function updateMetricsUI() {
@@ -617,6 +656,8 @@
             ? "--"
             : pulse.captureValue + " ticks";
 
+        document.getElementById("regLoad").textContent = state.load;
+        document.getElementById("regLoadHex").textContent = toHex(state.load);
         document.getElementById("regCapture").textContent =
           pulse.captureValue === null ? "--" : pulse.captureValue;
         document.getElementById("regCaptureHex").textContent =
@@ -784,10 +825,10 @@
 
         const span = visibleTicks();
         const cutoff = sim.tickIndex - span;
-        // The counter's realistic ceiling is pulseWidth - 1 (the rising
-        // tick itself reads 0), so scale the axis to the configured width
-        // with a little headroom.
-        const axisMax = Math.max(4, state.pulseWidth);
+        // The graph's vertical scale is fixed to the Load Register -- the
+        // counter can never exceed it -- rather than floating with whatever
+        // Pulse Width happens to be set to.
+        const axisMax = state.load;
         const yFor = (v) => padT + gh * (1 - v / axisMax);
 
         drawStepTrace(
@@ -819,9 +860,11 @@
           );
         }
 
-        counterCtx.fillStyle = "#8b93ad";
+        const rootStyleAxis = getComputedStyle(document.documentElement);
+        counterCtx.fillStyle = rootStyleAxis.getPropertyValue("--red").trim();
         counterCtx.font = "10px monospace";
-        counterCtx.fillText(axisMax + "", 4, padT + 4);
+        counterCtx.fillText("Load " + axisMax, 4, padT + 4);
+        counterCtx.fillStyle = "#8b93ad";
         counterCtx.fillText("0", 4, padT + gh + 4);
       }
 
@@ -872,6 +915,12 @@
       speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
       speedHighBtn.addEventListener("click", () => setSpeed("high"));
 
+      loadRange.addEventListener("input", (e) => {
+        state.load = parseInt(e.target.value, 10);
+        document.getElementById("loadVal").textContent = state.load;
+        updateMetricsUI();
+      });
+
       pulseWidthRange.addEventListener("input", (e) => {
         state.pulseWidth = parseInt(e.target.value, 10);
         document.getElementById("pulseWidthVal").textContent =
@@ -898,6 +947,7 @@
       });
 
       resetBtn.addEventListener("click", () => {
+        state.load = DEFAULTS.load;
         state.pulseWidth = DEFAULTS.pulseWidth;
         state.vsupply = DEFAULTS.vsupply;
         state.playing = false;
@@ -914,8 +964,10 @@
       // Drive every input's on-screen value from state at load time instead
       // of trusting the HTML's static value="" attributes alone to match.
       function syncControlsFromState() {
+        loadRange.value = state.load;
         pulseWidthRange.value = state.pulseWidth;
         voltageSelect.value = String(state.vsupply);
+        document.getElementById("loadVal").textContent = state.load;
         document.getElementById("pulseWidthVal").textContent =
           state.pulseWidth;
       }
