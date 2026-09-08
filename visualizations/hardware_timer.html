@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hardware Timer Simulator</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --green: #86efac;
+        --orange: #fb923c;
+        --red: #f87171;
+        --purple: #c084fc;
+        --yellow: #facc15;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 24px;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--green);
+        font-size: 2rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: var(--dim);
+        margin-bottom: 24px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) 280px;
+        gap: 18px;
+        max-width: 1500px;
+        margin: 0 auto;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-left: 3px solid var(--cyan);
+        background: #0e1424;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+      }
+
+      .metric .val {
+        color: var(--cyan);
+        font-weight: bold;
+      }
+
+      .box {
+        background: #1a1206;
+        border: 1px solid #4a3418;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 6px;
+        margin-bottom: 14px;
+        font-size: 0.8rem;
+      }
+
+      .box .label {
+        color: var(--orange);
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+      }
+
+      .reg-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+      }
+
+      .reg-row .hex {
+        color: var(--dim);
+      }
+
+      .reg-swatch {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        margin-right: 6px;
+      }
+
+      /* Graph panel */
+      .graph-panel {
+        padding: 16px;
+      }
+
+      .graph-label {
+        font-size: 0.75rem;
+        color: var(--dim);
+        margin: 10px 0 4px;
+      }
+
+      .graph-label:first-child {
+        margin-top: 0;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        width: 100%;
+      }
+
+      .canvas-wrap.clock {
+        height: 46px;
+      }
+
+      .canvas-wrap.counter {
+        height: 220px;
+      }
+
+      .canvas-wrap.channels {
+        height: 170px;
+      }
+
+      .canvas-wrap.capture {
+        height: 90px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: #050810;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        display: block;
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--dim);
+        flex-wrap: wrap;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 3px;
+        display: inline-block;
+      }
+
+      .playback-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+      }
+
+      #startStopBtn {
+        background: linear-gradient(135deg, #22d3ee, #3b82f6);
+        border: none;
+        color: #04101c;
+        font-weight: bold;
+        min-width: 110px;
+      }
+
+      /* Controls panel */
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+
+      .control-group {
+        margin-bottom: 18px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--cyan);
+        cursor: pointer;
+      }
+
+      select {
+        width: 100%;
+        background: #0e1424;
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 6px;
+        font-family: inherit;
+      }
+
+      .segmented {
+        display: flex;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .segmented button {
+        flex: 1;
+        background: #0e1424;
+        border: none;
+        color: var(--dim);
+        border-radius: 0;
+        padding: 8px 6px;
+      }
+
+      .segmented button.active {
+        background: var(--cyan);
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .clock-desc {
+        font-size: 0.75rem;
+        color: var(--dim);
+        line-height: 1.4;
+      }
+
+      #resetBtn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--red);
+        color: var(--red);
+      }
+
+      #resetBtn:hover {
+        background: rgba(248, 113, 113, 0.15);
+      }
+
+      @media (max-width: 1000px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Hardware Timer Simulator</h1>
+    <div class="subtitle">
+      Counter, load register, and PWM compare-channel visualization
+    </div>
+
+    <div class="layout">
+      <!-- Left: metrics -->
+      <div class="panel metrics-panel">
+        <h2>Real-time Metrics</h2>
+        <div class="metric">
+          <span>Counter</span><span class="val" id="mCounter">0</span>
+        </div>
+        <div class="metric">
+          <span>Clock Speed</span><span class="val" id="mClock">Medium</span>
+        </div>
+        <div class="metric">
+          <span>Period (Ticks)</span><span class="val" id="mPeriod">16</span>
+        </div>
+        <div class="metric">
+          <span>CH1 On-Time</span><span class="val" id="mCh1">25%</span>
+        </div>
+        <div class="metric">
+          <span>CH2 On-Time</span><span class="val" id="mCh2">50%</span>
+        </div>
+        <div class="metric">
+          <span>CH3 On-Time</span><span class="val" id="mCh3">75%</span>
+        </div>
+        <div class="metric" style="border-left-color: var(--yellow)">
+          <span>IC4 Measured Width</span
+          ><span class="val" id="mIcWidth" style="color: var(--yellow)"
+            >--</span
+          >
+        </div>
+
+        <div class="box">
+          <div class="label">How it works</div>
+          Counter increments by 1 on every clock tick. It resets to 0 the
+          instant it reaches the Load Register. Each output channel's pin is
+          HIGH while Counter &lt; its Compare Register, and LOW otherwise.
+          IC4 runs the opposite direction: it's an input -- on every edge of
+          the pulse you trigger, the current Counter value is latched into a
+          capture register, and the width is the difference between the two
+          (wrapping around the Load Register if needed).
+        </div>
+
+        <h2 style="margin-top: 4px">Registers</h2>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--red)"></span
+            >Load Register</span
+          ><span class="val" id="regLoad">16</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regLoadHex">0x10</span>
+        </div>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--cyan)"></span
+            >Compare 1 (CH1)</span
+          ><span class="val" id="regCh1">4</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regCh1Hex">0x04</span>
+        </div>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--green)"></span
+            >Compare 2 (CH2)</span
+          ><span class="val" id="regCh2">8</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regCh2Hex">0x08</span>
+        </div>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--purple)"></span
+            >Compare 3 (CH3)</span
+          ><span class="val" id="regCh3">12</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regCh3Hex">0x0C</span>
+        </div>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--yellow)"></span
+            >Capture Rising (IC4)</span
+          ><span class="val" id="regIcRising">--</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regIcRisingHex">--</span>
+        </div>
+        <div class="reg-row">
+          <span
+            ><span class="reg-swatch" style="background: var(--yellow)"></span
+            >Capture Falling (IC4)</span
+          ><span class="val" id="regIcFalling">--</span>
+        </div>
+        <div class="reg-row">
+          <span class="hex" id="regIcFallingHex">--</span>
+        </div>
+      </div>
+
+      <!-- Center: graphs -->
+      <div class="panel graph-panel">
+        <div class="graph-label">Clock Signal</div>
+        <div class="canvas-wrap clock">
+          <canvas id="clockCanvas"></canvas>
+        </div>
+
+        <div class="graph-label">Counter (Timer Value)</div>
+        <div class="canvas-wrap counter">
+          <canvas id="counterCanvas"></canvas>
+        </div>
+
+        <div class="graph-label">PWM Channel Outputs</div>
+        <div class="canvas-wrap channels">
+          <canvas id="channelCanvas"></canvas>
+        </div>
+
+        <div class="graph-label">Input Capture (IC4)</div>
+        <div class="canvas-wrap capture">
+          <canvas id="captureCanvas"></canvas>
+        </div>
+
+        <div class="legend">
+          <span
+            ><span class="swatch" style="background: var(--red)"></span>Load
+            Register (reset)</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--cyan)"></span
+            >Compare 1 / CH1</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--green)"></span
+            >Compare 2 / CH2</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--purple)"></span
+            >Compare 3 / CH3</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--yellow)"></span
+            >IC4 Input Pulse</span
+          >
+        </div>
+
+        <div class="playback-row">
+          <button id="startStopBtn">&#9654; Start</button>
+        </div>
+      </div>
+
+      <!-- Right: controls -->
+      <div class="panel controls-panel">
+        <h2>Controls</h2>
+
+        <div class="control-group">
+          <label>Clock Speed</label>
+          <div class="segmented">
+            <button id="speedLow">Low</button>
+            <button id="speedMedium" class="active">Medium</button>
+            <button id="speedHigh">High</button>
+          </div>
+          <div class="clock-desc" id="clockDesc">
+            350 ms per tick (~2.9 Hz)
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label
+            >Load Register (Period): <span id="loadVal">16</span> ticks</label
+          >
+          <input
+            type="range"
+            id="loadRange"
+            min="2"
+            max="64"
+            step="1"
+            value="16"
+          />
+        </div>
+
+        <div class="control-group">
+          <label>Compare 1 (CH1): <span id="ch1Val">4</span></label>
+          <input
+            type="range"
+            id="ch1Range"
+            min="0"
+            max="16"
+            step="1"
+            value="4"
+          />
+        </div>
+
+        <div class="control-group">
+          <label>Compare 2 (CH2): <span id="ch2Val">8</span></label>
+          <input
+            type="range"
+            id="ch2Range"
+            min="0"
+            max="16"
+            step="1"
+            value="8"
+          />
+        </div>
+
+        <div class="control-group">
+          <label>Compare 3 (CH3): <span id="ch3Val">12</span></label>
+          <input
+            type="range"
+            id="ch3Range"
+            min="0"
+            max="16"
+            step="1"
+            value="12"
+          />
+        </div>
+
+        <div class="control-group">
+          <label for="voltageSelect">Voltage Level</label>
+          <select id="voltageSelect">
+            <option value="3.3">3.3V</option>
+            <option value="5">5V</option>
+            <option value="9">9V</option>
+            <option value="12">12V</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label
+            >Input Capture: Pulse Width
+            <span id="pulseWidthVal">6</span> ticks</label
+          >
+          <input
+            type="range"
+            id="pulseWidthRange"
+            min="1"
+            max="16"
+            step="1"
+            value="6"
+          />
+          <button id="triggerPulseBtn" style="width: 100%; margin-top: 8px">
+            Trigger Pulse
+          </button>
+          <div class="checkbox-row">
+            <input type="checkbox" id="autoRepeatCheck" />
+            <label for="autoRepeatCheck" style="margin: 0"
+              >Auto-repeat</label
+            >
+          </div>
+        </div>
+
+        <button id="resetBtn">Reset View</button>
+      </div>
+    </div>
+
+    <script>
+      // ---- DOM refs ----
+      const clockCanvas = document.getElementById("clockCanvas");
+      const counterCanvas = document.getElementById("counterCanvas");
+      const channelCanvas = document.getElementById("channelCanvas");
+      const captureCanvas = document.getElementById("captureCanvas");
+      const clockCtx = clockCanvas.getContext("2d");
+      const counterCtx = counterCanvas.getContext("2d");
+      const channelCtx = channelCanvas.getContext("2d");
+      const captureCtx = captureCanvas.getContext("2d");
+
+      const loadRange = document.getElementById("loadRange");
+      const ch1Range = document.getElementById("ch1Range");
+      const ch2Range = document.getElementById("ch2Range");
+      const ch3Range = document.getElementById("ch3Range");
+      const voltageSelect = document.getElementById("voltageSelect");
+      const speedLowBtn = document.getElementById("speedLow");
+      const speedMediumBtn = document.getElementById("speedMedium");
+      const speedHighBtn = document.getElementById("speedHigh");
+      const clockDesc = document.getElementById("clockDesc");
+      const startStopBtn = document.getElementById("startStopBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const pulseWidthRange = document.getElementById("pulseWidthRange");
+      const triggerPulseBtn = document.getElementById("triggerPulseBtn");
+      const autoRepeatCheck = document.getElementById("autoRepeatCheck");
+
+      // Manual: milliseconds per clock tick for each speed setting -- lower
+      // is faster. Drag the Clock Speed buttons instead of editing code.
+      const TICK_INTERVALS = { low: 900, medium: 350, high: 100 };
+
+      // Manual: defaults are read straight from each control's HTML value=""
+      // (and whichever segmented speed button carries class="active")
+      // instead of being duplicated as JS literals -- edit the markup in the
+      // file and both the on-load state and Reset View pick it up.
+      const DEFAULTS = {
+        load: parseInt(loadRange.value, 10),
+        ch1: parseInt(ch1Range.value, 10),
+        ch2: parseInt(ch2Range.value, 10),
+        ch3: parseInt(ch3Range.value, 10),
+        vsupply: parseFloat(voltageSelect.value),
+        speed: speedLowBtn.classList.contains("active")
+          ? "low"
+          : speedHighBtn.classList.contains("active")
+            ? "high"
+            : "medium",
+        pulseWidth: parseInt(pulseWidthRange.value, 10),
+      };
+
+      const state = {
+        load: DEFAULTS.load,
+        ch1: DEFAULTS.ch1,
+        ch2: DEFAULTS.ch2,
+        ch3: DEFAULTS.ch3,
+        vsupply: DEFAULTS.vsupply,
+        speed: DEFAULTS.speed,
+        pulseWidth: DEFAULTS.pulseWidth,
+        playing: false,
+      };
+
+      // Manual: fixed idle gap (ticks) auto-repeat waits between pulses --
+      // not exposed as a control, kept simple since Pulse Width already
+      // covers the interesting variable.
+      const PULSE_IDLE_GAP = 4;
+
+      // Input Capture (IC4) state: a simulated external pulse generator plus
+      // the two capture registers it latches the Counter into. This runs the
+      // opposite direction from the CH1-3 compare channels -- instead of the
+      // timer driving a pin, an external pin is driving the timer.
+      const pulse = {
+        level: 0,
+        phaseTicks: 0,
+        pendingTrigger: false,
+        autoRepeat: false,
+        risingTick: null,
+        fallingTick: null,
+        captureRising: null,
+        captureFalling: null,
+        measuredWidth: null,
+      };
+
+      function resetPulse() {
+        pulse.level = 0;
+        pulse.phaseTicks = 0;
+        pulse.pendingTrigger = false;
+        pulse.risingTick = null;
+        pulse.fallingTick = null;
+        pulse.captureRising = null;
+        pulse.captureFalling = null;
+        pulse.measuredWidth = null;
+      }
+
+      // Advances the pulse generator by one tick and reports the edge (if
+      // any) that occurred, so doTick() can latch the Counter into the
+      // capture registers at the exact moment of the transition.
+      function advancePulseTick() {
+        const prevLevel = pulse.level;
+        if (pulse.level === 1) {
+          pulse.phaseTicks++;
+          if (pulse.phaseTicks >= state.pulseWidth) {
+            pulse.level = 0;
+            pulse.phaseTicks = 0;
+          }
+        } else if (pulse.pendingTrigger) {
+          pulse.level = 1;
+          pulse.phaseTicks = 0;
+          pulse.pendingTrigger = false;
+        } else if (pulse.autoRepeat) {
+          pulse.phaseTicks++;
+          if (pulse.phaseTicks >= PULSE_IDLE_GAP) {
+            pulse.level = 1;
+            pulse.phaseTicks = 0;
+          }
+        }
+        return { rising: prevLevel === 0 && pulse.level === 1, falling: prevLevel === 1 && pulse.level === 0 };
+      }
+
+      // Live counter/history state. Every entry is one real clock tick, so
+      // (unlike a continuously-scrolling scope) this is a genuinely discrete,
+      // step-by-step simulation -- exactly how a hardware counter behaves.
+      const sim = {
+        counter: 0,
+        tickIndex: 0,
+        tickAcc: 0, // ms accumulated toward the next tick
+        history: [], // { tick, counter, ch1, ch2, ch3 } (0/1 pin states)
+      };
+
+      function resetSim() {
+        sim.counter = 0;
+        sim.tickIndex = 0;
+        sim.tickAcc = 0;
+        sim.history = [];
+      }
+
+      function toHex(n) {
+        return "0x" + Math.max(0, n).toString(16).toUpperCase().padStart(2, "0");
+      }
+
+      // ---- Register clamping ----
+      function clampCompareRanges() {
+        [ch1Range, ch2Range, ch3Range].forEach((r) => (r.max = state.load));
+        state.ch1 = Math.min(state.ch1, state.load);
+        state.ch2 = Math.min(state.ch2, state.load);
+        state.ch3 = Math.min(state.ch3, state.load);
+
+        // Pulse width is capped at the Load Register too -- a pulse longer
+        // than one period would wrap the counter more than once, which the
+        // single-wraparound subtraction in doTick() can't correctly measure.
+        pulseWidthRange.max = state.load;
+        state.pulseWidth = Math.min(state.pulseWidth, state.load);
+      }
+
+      // ---- Simulation tick ----
+      function doTick() {
+        sim.tickIndex++;
+        // Reaching the Load Register is one tick; resetting to 0 is the
+        // *next* tick -- so both are their own visible plateau on the graph
+        // instead of the reset being folded invisibly into the next step.
+        sim.counter = sim.counter >= state.load ? 0 : sim.counter + 1;
+        const counter = sim.counter;
+
+        const edge = advancePulseTick();
+        if (edge.rising) {
+          pulse.risingTick = sim.tickIndex;
+          pulse.captureRising = counter;
+          pulse.captureFalling = null;
+          pulse.measuredWidth = null;
+        }
+        if (edge.falling) {
+          pulse.fallingTick = sim.tickIndex;
+          pulse.captureFalling = counter;
+          if (pulse.captureRising !== null) {
+            pulse.measuredWidth =
+              counter >= pulse.captureRising
+                ? counter - pulse.captureRising
+                : counter - pulse.captureRising + state.load;
+          }
+        }
+
+        sim.history.push({
+          tick: sim.tickIndex,
+          counter,
+          ch1: counter < state.ch1 ? 1 : 0,
+          ch2: counter < state.ch2 ? 1 : 0,
+          ch3: counter < state.ch3 ? 1 : 0,
+          ic: pulse.level,
+        });
+      }
+
+      // Manual: how many ticks stay visible in the scrolling window -- three
+      // full periods, floored/capped so very short or long periods still
+      // read well.
+      function visibleTicks() {
+        return Math.max(24, Math.min(150, state.load * 3));
+      }
+
+      function updateMetricsUI() {
+        document.getElementById("mCounter").textContent = sim.counter;
+        document.getElementById("mClock").textContent =
+          state.speed[0].toUpperCase() + state.speed.slice(1);
+        document.getElementById("mPeriod").textContent = state.load;
+        document.getElementById("mCh1").textContent =
+          Math.round((state.ch1 / state.load) * 100) + "%";
+        document.getElementById("mCh2").textContent =
+          Math.round((state.ch2 / state.load) * 100) + "%";
+        document.getElementById("mCh3").textContent =
+          Math.round((state.ch3 / state.load) * 100) + "%";
+
+        document.getElementById("regLoad").textContent = state.load;
+        document.getElementById("regLoadHex").textContent = toHex(state.load);
+        document.getElementById("regCh1").textContent = state.ch1;
+        document.getElementById("regCh1Hex").textContent = toHex(state.ch1);
+        document.getElementById("regCh2").textContent = state.ch2;
+        document.getElementById("regCh2Hex").textContent = toHex(state.ch2);
+        document.getElementById("regCh3").textContent = state.ch3;
+        document.getElementById("regCh3Hex").textContent = toHex(state.ch3);
+
+        document.getElementById("mIcWidth").textContent =
+          pulse.measuredWidth === null ? "--" : pulse.measuredWidth + " ticks";
+        document.getElementById("regIcRising").textContent =
+          pulse.captureRising === null ? "--" : pulse.captureRising;
+        document.getElementById("regIcRisingHex").textContent =
+          pulse.captureRising === null ? "--" : toHex(pulse.captureRising);
+        document.getElementById("regIcFalling").textContent =
+          pulse.captureFalling === null ? "--" : pulse.captureFalling;
+        document.getElementById("regIcFallingHex").textContent =
+          pulse.captureFalling === null ? "--" : toHex(pulse.captureFalling);
+      }
+
+      // ---- Canvas setup ----
+      const canvases = [
+        { canvas: clockCanvas, ctx: clockCtx },
+        { canvas: counterCanvas, ctx: counterCtx },
+        { canvas: channelCanvas, ctx: channelCtx },
+        { canvas: captureCanvas, ctx: captureCtx },
+      ];
+
+      function resizeCanvases() {
+        const dpr = window.devicePixelRatio || 1;
+        for (const c of canvases) {
+          const rect = c.canvas.parentElement.getBoundingClientRect();
+          c.canvas.width = Math.round(rect.width * dpr);
+          c.canvas.height = Math.round(rect.height * dpr);
+          c.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+      }
+
+      function drawGrid(ctx, w, h, padL, padR, padT, padB, cols) {
+        ctx.strokeStyle = "#16203a";
+        ctx.lineWidth = 1;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+        for (let i = 0; i <= cols; i++) {
+          const x = padL + (gw / cols) * i;
+          ctx.beginPath();
+          ctx.moveTo(x, padT);
+          ctx.lineTo(x, padT + gh);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = "#3a4468";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(padL, padT);
+        ctx.lineTo(padL, padT + gh);
+        ctx.lineTo(padL + gw, padT + gh);
+        ctx.stroke();
+      }
+
+      // Draws a step/staircase trace through samples newer than `cutoff`
+      // ticks, mapping each sample's value through yFn. Shared by the clock,
+      // counter, and channel graphs -- only the value + y-mapping differ.
+      function drawStepTrace(ctx, padL, gw, cutoff, span, valueFn, yFn, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = color;
+        ctx.beginPath();
+        let first = true;
+        let prevVal = null;
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const x = padL + gw * ((s.tick - cutoff) / span);
+          const val = valueFn(s);
+          const y = yFn(val);
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else if (prevVal !== val) {
+            ctx.lineTo(x, yFn(prevVal));
+            ctx.lineTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+          prevVal = val;
+        }
+        if (!first) ctx.lineTo(padL + gw, yFn(prevVal));
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      function drawClockGraph() {
+        const rect = clockCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        clockCtx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 6;
+        const padB = 6;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(clockCtx, w, h, padL, padR, padT, padB, 12);
+
+        const span = visibleTicks();
+        const cutoff = sim.tickIndex - span;
+        const highY = padT + gh * 0.15;
+        const lowY = padT + gh * 0.85;
+
+        drawStepTrace(
+          clockCtx,
+          padL,
+          gw,
+          cutoff,
+          span,
+          (s) => s.tick % 2,
+          (v) => (v ? highY : lowY),
+          "#8b93ad",
+        );
+
+        clockCtx.fillStyle = "#8b93ad";
+        clockCtx.font = "11px monospace";
+        clockCtx.fillText("CLK", 4, h / 2 + 4);
+      }
+
+      function drawCounterGraph() {
+        const rect = counterCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        counterCtx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 16;
+        const padB = 22;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(counterCtx, w, h, padL, padR, padT, padB, 12);
+
+        const span = visibleTicks();
+        const cutoff = sim.tickIndex - span;
+        const yFor = (v) => padT + gh * (1 - v / state.load);
+
+        // Compare-register reference lines
+        const refs = [
+          { v: state.load, cssVar: "--red", label: "Load" },
+          { v: state.ch1, cssVar: "--cyan", label: "CH1" },
+          { v: state.ch2, cssVar: "--green", label: "CH2" },
+          { v: state.ch3, cssVar: "--purple", label: "CH3" },
+        ];
+        const rootStyle = getComputedStyle(document.documentElement);
+        counterCtx.font = "10px monospace";
+        counterCtx.setLineDash([6, 5]);
+        counterCtx.lineWidth = 1.5;
+        for (const ref of refs) {
+          const color = rootStyle.getPropertyValue(ref.cssVar).trim();
+          const y = yFor(ref.v);
+          counterCtx.strokeStyle = color;
+          counterCtx.beginPath();
+          counterCtx.moveTo(padL, y);
+          counterCtx.lineTo(padL + gw, y);
+          counterCtx.stroke();
+          counterCtx.fillStyle = color;
+          counterCtx.fillText(ref.label + " " + ref.v, padL + gw - 60, y - 4);
+        }
+        counterCtx.setLineDash([]);
+
+        drawStepTrace(
+          counterCtx,
+          padL,
+          gw,
+          cutoff,
+          span,
+          (s) => s.counter,
+          yFor,
+          "#e5e9f5",
+        );
+
+        counterCtx.fillStyle = "#8b93ad";
+        counterCtx.fillText(state.load + "", 4, padT + 4);
+        counterCtx.fillText("0", 4, padT + gh + 4);
+      }
+
+      function drawChannelGraph() {
+        const rect = channelCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        channelCtx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 6;
+        const padB = 6;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(channelCtx, w, h, padL, padR, padT, padB, 12);
+
+        const span = visibleTicks();
+        const cutoff = sim.tickIndex - span;
+        const laneH = gh / 3;
+        const rootStyle = getComputedStyle(document.documentElement);
+
+        const lanes = [
+          { key: "ch1", cssVar: "--cyan", label: "CH1" },
+          { key: "ch2", cssVar: "--green", label: "CH2" },
+          { key: "ch3", cssVar: "--purple", label: "CH3" },
+        ];
+
+        lanes.forEach((lane, i) => {
+          const laneTop = padT + laneH * i;
+          const highY = laneTop + laneH * 0.2;
+          const lowY = laneTop + laneH * 0.8;
+          const color = rootStyle.getPropertyValue(lane.cssVar).trim();
+
+          drawStepTrace(
+            channelCtx,
+            padL,
+            gw,
+            cutoff,
+            span,
+            (s) => s[lane.key],
+            (v) => (v ? highY : lowY),
+            color,
+          );
+
+          channelCtx.fillStyle = color;
+          channelCtx.font = "11px monospace";
+          channelCtx.fillText(
+            lane.label + " (" + state.vsupply + "V)",
+            4,
+            highY + 4,
+          );
+        });
+      }
+
+      function drawCaptureGraph() {
+        const rect = captureCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        captureCtx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 6;
+        const padB = 6;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(captureCtx, w, h, padL, padR, padT, padB, 12);
+
+        const span = visibleTicks();
+        const cutoff = sim.tickIndex - span;
+        const highY = padT + gh * 0.2;
+        const lowY = padT + gh * 0.8;
+        const rootStyle = getComputedStyle(document.documentElement);
+        const color = rootStyle.getPropertyValue("--yellow").trim();
+
+        drawStepTrace(
+          captureCtx,
+          padL,
+          gw,
+          cutoff,
+          span,
+          (s) => s.ic,
+          (v) => (v ? highY : lowY),
+          color,
+        );
+
+        // Mark the captured Counter value at each edge, when still visible.
+        captureCtx.font = "10px monospace";
+        captureCtx.fillStyle = color;
+        if (pulse.risingTick !== null && pulse.risingTick >= cutoff) {
+          const x = padL + gw * ((pulse.risingTick - cutoff) / span);
+          captureCtx.fillText("R=" + pulse.captureRising, x + 3, highY - 4);
+        }
+        if (pulse.fallingTick !== null && pulse.fallingTick >= cutoff) {
+          const x = padL + gw * ((pulse.fallingTick - cutoff) / span);
+          captureCtx.fillText("F=" + pulse.captureFalling, x + 3, lowY + 12);
+        }
+
+        captureCtx.fillStyle = "#8b93ad";
+        captureCtx.fillText("IC4", 4, h / 2 + 4);
+      }
+
+      // ---- Main loop ----
+      let lastTs = null;
+
+      function draw(ts) {
+        if (lastTs === null) lastTs = ts;
+        let dt = ts - lastTs;
+        lastTs = ts;
+        dt = Math.min(dt, 250); // clamp jumps from a backgrounded tab
+
+        if (state.playing) {
+          sim.tickAcc += dt;
+          const interval = TICK_INTERVALS[state.speed];
+          while (sim.tickAcc >= interval) {
+            sim.tickAcc -= interval;
+            doTick();
+          }
+          const span = visibleTicks();
+          const cutoff = sim.tickIndex - span;
+          while (sim.history.length && sim.history[0].tick < cutoff) {
+            sim.history.shift();
+          }
+        }
+
+        drawClockGraph();
+        drawCounterGraph();
+        drawChannelGraph();
+        drawCaptureGraph();
+        updateMetricsUI();
+
+        requestAnimationFrame(draw);
+      }
+
+      // ---- Event wiring ----
+      loadRange.addEventListener("input", (e) => {
+        state.load = parseInt(e.target.value, 10);
+        document.getElementById("loadVal").textContent = state.load;
+        clampCompareRanges();
+        syncControlsFromState();
+        updateMetricsUI();
+      });
+
+      ch1Range.addEventListener("input", (e) => {
+        state.ch1 = parseInt(e.target.value, 10);
+        document.getElementById("ch1Val").textContent = state.ch1;
+        updateMetricsUI();
+      });
+
+      ch2Range.addEventListener("input", (e) => {
+        state.ch2 = parseInt(e.target.value, 10);
+        document.getElementById("ch2Val").textContent = state.ch2;
+        updateMetricsUI();
+      });
+
+      ch3Range.addEventListener("input", (e) => {
+        state.ch3 = parseInt(e.target.value, 10);
+        document.getElementById("ch3Val").textContent = state.ch3;
+        updateMetricsUI();
+      });
+
+      voltageSelect.addEventListener("change", (e) => {
+        state.vsupply = parseFloat(e.target.value);
+      });
+
+      pulseWidthRange.addEventListener("input", (e) => {
+        state.pulseWidth = parseInt(e.target.value, 10);
+        document.getElementById("pulseWidthVal").textContent =
+          state.pulseWidth;
+      });
+
+      triggerPulseBtn.addEventListener("click", () => {
+        pulse.pendingTrigger = true;
+      });
+
+      autoRepeatCheck.addEventListener("change", (e) => {
+        pulse.autoRepeat = e.target.checked;
+      });
+
+      function setSpeed(speed) {
+        state.speed = speed;
+        speedLowBtn.classList.toggle("active", speed === "low");
+        speedMediumBtn.classList.toggle("active", speed === "medium");
+        speedHighBtn.classList.toggle("active", speed === "high");
+        const interval = TICK_INTERVALS[speed];
+        const hz = (1000 / interval).toFixed(1);
+        clockDesc.textContent = `${interval} ms per tick (~${hz} Hz)`;
+        updateMetricsUI();
+      }
+
+      speedLowBtn.addEventListener("click", () => setSpeed("low"));
+      speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
+      speedHighBtn.addEventListener("click", () => setSpeed("high"));
+
+      startStopBtn.addEventListener("click", () => {
+        state.playing = !state.playing;
+        startStopBtn.innerHTML = state.playing
+          ? "&#9632; Stop"
+          : "&#9654; Start";
+      });
+
+      resetBtn.addEventListener("click", () => {
+        state.load = DEFAULTS.load;
+        state.ch1 = DEFAULTS.ch1;
+        state.ch2 = DEFAULTS.ch2;
+        state.ch3 = DEFAULTS.ch3;
+        state.vsupply = DEFAULTS.vsupply;
+        state.pulseWidth = DEFAULTS.pulseWidth;
+        state.playing = false;
+        resetSim();
+        resetPulse();
+        pulse.autoRepeat = false;
+        autoRepeatCheck.checked = false;
+        clampCompareRanges();
+
+        syncControlsFromState();
+        setSpeed(DEFAULTS.speed);
+        startStopBtn.innerHTML = "&#9654; Start";
+        updateMetricsUI();
+      });
+
+      // Drive every input's on-screen value from state at load time instead
+      // of trusting the HTML's static value="" attributes alone -- keeps the
+      // compare sliders' max in sync with the Load Register too.
+      function syncControlsFromState() {
+        loadRange.value = state.load;
+        ch1Range.max = state.load;
+        ch2Range.max = state.load;
+        ch3Range.max = state.load;
+        ch1Range.value = state.ch1;
+        ch2Range.value = state.ch2;
+        ch3Range.value = state.ch3;
+        voltageSelect.value = String(state.vsupply);
+        pulseWidthRange.max = state.load;
+        pulseWidthRange.value = state.pulseWidth;
+        document.getElementById("loadVal").textContent = state.load;
+        document.getElementById("ch1Val").textContent = state.ch1;
+        document.getElementById("ch2Val").textContent = state.ch2;
+        document.getElementById("ch3Val").textContent = state.ch3;
+        document.getElementById("pulseWidthVal").textContent =
+          state.pulseWidth;
+      }
+
+      window.addEventListener("resize", resizeCanvases);
+      resizeCanvases();
+      syncControlsFromState();
+      setSpeed(DEFAULTS.speed);
+      updateMetricsUI();
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>
