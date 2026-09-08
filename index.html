@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CmpE 146</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --green: #86efac;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 40px 20px;
+      }
+
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        color: var(--green);
+        font-size: 1.8rem;
+        letter-spacing: 1px;
+        margin: 0 0 4px;
+      }
+
+      .byline {
+        color: var(--dim);
+        margin-bottom: 32px;
+      }
+
+      h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      li {
+        margin-bottom: 10px;
+      }
+
+      a {
+        display: block;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        color: var(--text);
+        text-decoration: none;
+        transition: border-color 0.15s ease;
+      }
+
+      a:hover {
+        border-color: var(--cyan);
+      }
+
+      a .title {
+        color: var(--cyan);
+        font-weight: bold;
+      }
+
+      a .desc {
+        color: var(--dim);
+        font-size: 0.85rem;
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>2026 SJSU CmpE 146 Content</h1>
+      <div class="byline">By: Khalil Estell</div>
+
+      <h2>Visualizations</h2>
+      <ul>
+        <li>
+          <a href="visualizations/pwm.html">
+            <div class="title">PWM Simulator</div>
+            <div class="desc">
+              Interactive pulse-width modulation visualization: progressive,
+              stationary, and reactive (RC filter) signal modes.
+            </div>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PWM Simulator</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --green: #86efac;
+        --orange: #fb923c;
+        --red: #f87171;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 24px;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--green);
+        font-size: 2rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: var(--dim);
+        margin-bottom: 24px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr) 280px;
+        gap: 18px;
+        max-width: 1500px;
+        margin: 0 auto;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-left: 3px solid var(--cyan);
+        background: #0e1424;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+      }
+
+      .metric .val {
+        color: var(--cyan);
+        font-weight: bold;
+      }
+
+      .box {
+        background: #1a1206;
+        border: 1px solid #4a3418;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 6px;
+        margin-bottom: 14px;
+      }
+
+      .box .label {
+        color: var(--orange);
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+      }
+
+      .box .formula {
+        font-size: 0.85rem;
+        color: var(--text);
+      }
+
+      .reg-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+      }
+
+      .reg-row .hex {
+        color: var(--dim);
+      }
+
+      /* Graph panel */
+      .graph-panel {
+        padding: 16px;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        width: 100%;
+        height: 380px;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: #050810;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        display: block;
+      }
+
+      .legend {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        margin-top: 10px;
+        font-size: 0.8rem;
+        color: var(--dim);
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 3px;
+        display: inline-block;
+      }
+
+      .playback-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 14px;
+        flex-wrap: wrap;
+      }
+
+      .physical-row {
+        display: flex;
+        justify-content: center;
+        gap: 60px;
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--panel-border);
+        flex-wrap: wrap;
+      }
+
+      .physical-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .physical-label {
+        font-size: 0.75rem;
+        color: var(--dim);
+      }
+
+      .physical-label .val {
+        color: var(--cyan);
+      }
+
+      .led-wrap,
+      .motor-wrap {
+        width: 70px;
+        height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .led-bulb {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 32%,
+          #fff7d6,
+          #fbbf24 45%,
+          #78350f 100%
+        );
+      }
+
+      .motor-body {
+        width: 62px;
+        height: 62px;
+        border-radius: 50%;
+        background: #0e1424;
+        border: 2px solid var(--panel-border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .motor-rotor {
+        width: 44px;
+        height: 44px;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+      }
+
+      #playBtn {
+        background: linear-gradient(135deg, #22d3ee, #3b82f6);
+        border: none;
+        color: #04101c;
+        font-weight: bold;
+        min-width: 90px;
+      }
+
+      #playBtn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .preset-btn {
+        background: transparent;
+        border: 1px solid var(--orange);
+        color: var(--orange);
+      }
+
+      .preset-btn:hover {
+        background: rgba(251, 146, 60, 0.15);
+      }
+
+      /* Controls panel */
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+
+      .control-group {
+        margin-bottom: 18px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--cyan);
+        cursor: pointer;
+      }
+
+      select {
+        width: 100%;
+        background: #0e1424;
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 6px;
+        font-family: inherit;
+      }
+
+      .segmented {
+        display: flex;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .segmented button {
+        flex: 1;
+        background: #0e1424;
+        border: none;
+        color: var(--dim);
+        border-radius: 0;
+        padding: 8px 6px;
+      }
+
+      .segmented button.active {
+        background: var(--cyan);
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .mode-desc {
+        font-size: 0.75rem;
+        color: var(--dim);
+        line-height: 1.4;
+        min-height: 32px;
+      }
+
+      .control-hidden {
+        display: none;
+      }
+
+      #resetBtn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--red);
+        color: var(--red);
+      }
+
+      #resetBtn:hover {
+        background: rgba(248, 113, 113, 0.15);
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+      }
+
+      @media (max-width: 1000px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PWM Simulator</h1>
+    <div class="subtitle">Interactive pulse-width modulation visualization</div>
+
+    <div class="layout">
+      <!-- Left: metrics -->
+      <div class="panel metrics-panel">
+        <h2>Real-time Metrics</h2>
+        <div class="metric">
+          <span>Duty Cycle</span><span class="val" id="mDuty">50%</span>
+        </div>
+        <div class="metric">
+          <span>Effective Voltage</span
+          ><span class="val" id="mVeff">1.65V</span>
+        </div>
+        <div class="metric">
+          <span>Frequency</span><span class="val" id="mFreq">50 Hz</span>
+        </div>
+        <div class="metric">
+          <span>Period</span><span class="val" id="mPeriod">20.0 ms</span>
+        </div>
+
+        <div class="box">
+          <div class="label">Formula</div>
+          <div class="formula">Vavg = (Duty% / 100) &times; Vsupply</div>
+        </div>
+
+        <h2 style="margin-top: 4px">Counter Registers</h2>
+        <div class="control-group" style="margin-bottom: 10px">
+          <label for="clockSelect">Counter Clock</label>
+          <select id="clockSelect">
+            <option value="1000000">1 MHz</option>
+            <option value="2000000">2 MHz</option>
+            <option value="4000000">4 MHz</option>
+            <option value="8000000">8 MHz</option>
+            <option value="16000000" selected>16 MHz</option>
+            <option value="48000000">48 MHz</option>
+          </select>
+        </div>
+        <div class="box" style="background: #0e1424; border-color: #262f4a">
+          <div class="reg-row">
+            <span>Period Register</span><span class="val" id="regArr">999</span>
+          </div>
+          <div class="reg-row">
+            <span class="hex" id="regArrHex">0x03E7</span>
+          </div>
+          <div class="reg-row">
+            <span>Duty Register</span><span class="val" id="regCcr">499</span>
+          </div>
+          <div class="reg-row">
+            <span class="hex" id="regCcrHex">0x01F3</span>
+          </div>
+          <div
+            class="formula"
+            style="font-size: 0.75rem; color: var(--dim); margin-top: 6px"
+          >
+            Period Reg = Clock / Frequency &minus; 1<br />Duty Reg = Period Reg
+            &times; Duty%
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: graph -->
+      <div class="panel graph-panel">
+        <div class="canvas-wrap">
+          <canvas id="scope"></canvas>
+        </div>
+        <div class="legend">
+          <span
+            ><span class="swatch" style="background: #22d3ee"></span>PWM
+            Signal</span
+          >
+          <span
+            ><span
+              class="swatch"
+              style="
+                background: var(--orange);
+                border-top: 2px dashed var(--orange);
+                height: 0;
+              "
+            ></span
+            >Effective (Average) Voltage</span
+          >
+        </div>
+        <div class="playback-row">
+          <button id="playBtn">&#9654; Play</button>
+          <button class="preset-btn" data-duty="25">25%</button>
+          <button class="preset-btn" data-duty="50">50%</button>
+          <button class="preset-btn" data-duty="75">75%</button>
+        </div>
+
+        <div class="physical-row">
+          <div class="physical-item">
+            <div class="led-wrap">
+              <div class="led-bulb" id="ledBulb"></div>
+            </div>
+            <div class="physical-label">
+              LED Brightness: <span class="val" id="ledPct">0%</span>
+            </div>
+          </div>
+          <div class="physical-item">
+            <div class="motor-wrap">
+              <div class="motor-body">
+                <svg
+                  id="motorRotor"
+                  class="motor-rotor"
+                  viewBox="0 0 100 100"
+                >
+                  <rect
+                    x="44"
+                    y="6"
+                    width="12"
+                    height="88"
+                    rx="6"
+                    fill="#22d3ee"
+                  />
+                  <rect
+                    x="6"
+                    y="44"
+                    width="88"
+                    height="12"
+                    rx="6"
+                    fill="#22d3ee"
+                  />
+                  <circle cx="50" cy="50" r="9" fill="#8b93ad" />
+                </svg>
+              </div>
+            </div>
+            <div class="physical-label">
+              Motor Speed: <span class="val" id="motorPct">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: controls -->
+      <div class="panel controls-panel">
+        <h2>Controls</h2>
+
+        <div class="control-group">
+          <label>Signal Mode</label>
+          <div class="segmented">
+            <button id="modeProgressive" class="active">Progressive</button>
+            <button id="modeStationary">Stationary</button>
+            <button id="modeReactive">Reactive</button>
+          </div>
+          <div class="mode-desc" id="modeDesc">
+            Progressive: the trace scrolls continuously in real time, like a
+            live oscilloscope.
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Frequency: <span id="freqVal">50</span> Hz</label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <input
+              type="range"
+              id="freqRange"
+              min="1"
+              max="500"
+              value="50"
+              style="flex: 1"
+            />
+            <input
+              type="number"
+              id="freqNumber"
+              min="1"
+              max="1000"
+              step="1"
+              value="50"
+              style="
+                width: 80px;
+                background: #0e1424;
+                color: var(--text);
+                border: 1px solid var(--panel-border);
+                border-radius: 6px;
+                padding: 4px 6px;
+                font-family: inherit;
+              "
+            />
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Duty Cycle: <span id="dutyVal">50</span>%</label>
+          <input type="range" id="dutyRange" min="0" max="100" value="50" />
+        </div>
+
+        <div class="control-group">
+          <label for="voltageSelect">Voltage Level</label>
+          <select id="voltageSelect">
+            <option value="3.3">3.3V</option>
+            <option value="5">5V</option>
+            <option value="9">9V</option>
+            <option value="12">12V</option>
+          </select>
+        </div>
+
+        <div class="control-group" id="speedGroup">
+          <label>Animation Speed: <span id="speedVal">0.10</span>x</label>
+          <input
+            type="range"
+            id="speedRange"
+            min="0.01"
+            max="2"
+            step="0.01"
+            value="0.10"
+          />
+        </div>
+
+        <div class="control-group" id="stiffnessGroup">
+          <label>Avg. Climb Speed: <span id="stiffnessVal">60</span></label>
+          <input
+            type="range"
+            id="stiffnessRange"
+            min="5"
+            max="150"
+            step="1"
+            value="60"
+          />
+        </div>
+
+        <div class="control-group" id="dampingGroup">
+          <label
+            >Avg. Damping: <span id="dampingVal">10</span> (higher = less
+            overshoot)</label
+          >
+          <input
+            type="range"
+            id="dampingRange"
+            min="1"
+            max="40"
+            step="0.5"
+            value="10"
+          />
+        </div>
+
+        <div class="control-group" id="rcGroup">
+          <label
+            >Filter RC Time Constant: <span id="rcVal">10</span> ms
+            (higher = smoother, more lag; lower = more ripple)</label
+          >
+          <input
+            type="range"
+            id="rcRange"
+            min="0.5"
+            max="100"
+            step="0.5"
+            value="10"
+          />
+        </div>
+
+        <button id="resetBtn">Reset View</button>
+      </div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("scope");
+      const ctx = canvas.getContext("2d");
+      const wrap = canvas.parentElement;
+
+      const freqRange = document.getElementById("freqRange");
+      const freqNumber = document.getElementById("freqNumber");
+      const dutyRange = document.getElementById("dutyRange");
+      const speedRange = document.getElementById("speedRange");
+      const stiffnessRange = document.getElementById("stiffnessRange");
+      const dampingRange = document.getElementById("dampingRange");
+      const rcRange = document.getElementById("rcRange");
+      const voltageSelect = document.getElementById("voltageSelect");
+      const clockSelect = document.getElementById("clockSelect");
+      const playBtn = document.getElementById("playBtn");
+      const modeProgressiveBtn = document.getElementById("modeProgressive");
+      const modeStationaryBtn = document.getElementById("modeStationary");
+      const modeReactiveBtn = document.getElementById("modeReactive");
+      const modeDesc = document.getElementById("modeDesc");
+      const speedGroup = document.getElementById("speedGroup");
+      const stiffnessGroup = document.getElementById("stiffnessGroup");
+      const dampingGroup = document.getElementById("dampingGroup");
+      const rcGroup = document.getElementById("rcGroup");
+      const resetBtn = document.getElementById("resetBtn");
+      const ledBulb = document.getElementById("ledBulb");
+      const ledPct = document.getElementById("ledPct");
+      const motorRotor = document.getElementById("motorRotor");
+      const motorPct = document.getElementById("motorPct");
+
+      // Manual: defaults are read straight from each control's HTML value=""
+      // (and whichever segmented mode button carries class="active") instead
+      // of being duplicated as JS literals -- edit the markup in the file and
+      // both the on-load state and Reset View pick it up automatically.
+      const DEFAULTS = {
+        freq: parseFloat(freqNumber.value),
+        duty: parseFloat(dutyRange.value),
+        vsupply: parseFloat(voltageSelect.value),
+        clock: parseInt(clockSelect.value, 10),
+        mode: modeReactiveBtn.classList.contains("active")
+          ? "reactive"
+          : modeStationaryBtn.classList.contains("active")
+            ? "stationary"
+            : "progressive",
+        speed: parseFloat(speedRange.value),
+        filterStiffness: parseFloat(stiffnessRange.value),
+        filterDamping: parseFloat(dampingRange.value),
+        filterRC: parseFloat(rcRange.value),
+      };
+
+      const state = {
+        freq: DEFAULTS.freq,
+        duty: DEFAULTS.duty,
+        vsupply: DEFAULTS.vsupply,
+        clock: DEFAULTS.clock,
+        mode: DEFAULTS.mode,
+        speed: DEFAULTS.speed,
+        filterStiffness: DEFAULTS.filterStiffness,
+        filterDamping: DEFAULTS.filterDamping,
+        filterRC: DEFAULTS.filterRC,
+        playing: true,
+      };
+
+      // Live simulation state for Progressive mode. History is recorded as it
+      // happens, so past samples keep reflecting whatever duty/frequency was
+      // active when they were generated -- only new samples reflect a change.
+      const sim = {
+        clock: 0, // ms of simulated elapsed time
+        phaseFrac: 0, // 0..1 position within the current period
+        filterFrac: state.duty / 100, // smoothed/filtered average, 0..1
+        filterVel: 0, // used only by Progressive's spring model
+        history: [], // { t, value(0/1), filtered(0..1) }
+      };
+
+      function resetSim() {
+        sim.clock = 0;
+        sim.phaseFrac = 0;
+        sim.filterFrac = state.duty / 100;
+        sim.filterVel = 0;
+        sim.history = [];
+      }
+
+      const modeDescriptions = {
+        progressive:
+          "Progressive: a live trace that scrolls in real time. The average line eases toward the target duty cycle with a slight overshoot-and-settle, like a lightly underdamped filter. Past pulses keep reflecting whatever duty/frequency was active when they were drawn -- only new samples react to your changes.",
+        stationary:
+          "Stationary: the trace is anchored to the axis (t = 0 at the left edge) and redraws instantly, so you can isolate the effect of changing period or duty cycle.",
+        reactive:
+          "Reactive: a live trace, same scrolling history as Progressive, but the average line is a real single-pole RC filter charging/discharging off the raw PWM edges -- so it shows genuine switching ripple, not just a smoothed target.",
+      };
+
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = wrap.getBoundingClientRect();
+        canvas.width = Math.round(rect.width * dpr);
+        canvas.height = Math.round(rect.height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function updateMetricsUI() {
+        const period = 1000 / state.freq; // ms
+        const veff = (state.duty / 100) * state.vsupply;
+        document.getElementById("mDuty").textContent = state.duty + "%";
+        document.getElementById("mVeff").textContent = veff.toFixed(2) + "V";
+        document.getElementById("mFreq").textContent = state.freq + " Hz";
+        document.getElementById("mPeriod").textContent =
+          period.toFixed(1) + " ms";
+
+        const arr = Math.max(1, Math.round(state.clock / state.freq) - 1);
+        const ccr = Math.max(0, Math.round(arr * (state.duty / 100)));
+        document.getElementById("regArr").textContent = arr;
+        document.getElementById("regArrHex").textContent =
+          "0x" + arr.toString(16).toUpperCase().padStart(4, "0");
+        document.getElementById("regCcr").textContent = ccr;
+        document.getElementById("regCcrHex").textContent =
+          "0x" + ccr.toString(16).toUpperCase().padStart(4, "0");
+      }
+
+      function drawGrid(w, h, padL, padR, padT, padB) {
+        ctx.strokeStyle = "#16203a";
+        ctx.lineWidth = 1;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+        const cols = 12;
+        const rows = 6;
+        for (let i = 0; i <= cols; i++) {
+          const x = padL + (gw / cols) * i;
+          ctx.beginPath();
+          ctx.moveTo(x, padT);
+          ctx.lineTo(x, padT + gh);
+          ctx.stroke();
+        }
+        for (let i = 0; i <= rows; i++) {
+          const y = padT + (gh / rows) * i;
+          ctx.beginPath();
+          ctx.moveTo(padL, y);
+          ctx.lineTo(padL + gw, y);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = "#3a4468";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(padL, padT);
+        ctx.lineTo(padL, padT + gh);
+        ctx.lineTo(padL + gw, padT + gh);
+        ctx.stroke();
+      }
+
+      let lastTs = null;
+
+      // Manual: master real-time-to-simulation-time multiplier for
+      // Progressive mode. The Animation Speed slider's "1.0x" plays at this
+      // fraction of real time, not true real time -- lower it to slow the
+      // trace's scroll speed down further without touching the slider range.
+      const TIME_SCALE = 1.0;
+
+      // Manual: top rotor speed (degrees/sec) at 100% effective voltage --
+      // raise this to make the motor graphic spin faster at full duty cycle.
+      const MOTOR_MAX_DEG_PER_SEC = 720;
+      let motorAngle = 0;
+
+      // Drives the LED/motor graphics from the same avgFrac (0..1 effective
+      // voltage fraction) used for the orange average-voltage trace, so both
+      // Progressive and Stationary modes react identically at a given duty.
+      function updatePhysicalIndicators(avgFrac, dtMs) {
+        const pct = Math.round(avgFrac * 100);
+
+        const glowSize = 6 + 46 * avgFrac;
+        const glowAlpha = 0.12 + 0.55 * avgFrac;
+        ledBulb.style.filter = `brightness(${0.5 + 1.3 * avgFrac})`;
+        ledBulb.style.boxShadow = `0 0 ${glowSize}px ${glowSize * 0.4}px rgba(251, 191, 36, ${glowAlpha})`;
+        ledPct.textContent = pct + "%";
+
+        motorAngle += MOTOR_MAX_DEG_PER_SEC * avgFrac * (dtMs / 1000);
+        motorAngle %= 360;
+        motorRotor.style.transform = `rotate(${motorAngle}deg)`;
+        motorPct.textContent = pct + "%";
+      }
+
+      // Progressive: an underdamped spring easing the average line toward
+      // the current duty-cycle target -- smooth, with a brief overshoot when
+      // the target changes, no switching ripple.
+      // Manual: lives in state.filterStiffness / state.filterDamping, exposed
+      // as the "Avg. Climb Speed" / "Avg. Damping" sliders -- drag them
+      // instead of editing code. Damping is inverse to overshoot: turning
+      // Avg. Damping UP means LESS overshoot. damping ratio = filterDamping /
+      // (2 * sqrt(filterStiffness)); below 1 it overshoots before settling.
+      //
+      // Reactive: a real single-pole RC low-pass filter charging/discharging
+      // toward the instantaneous 0/1 PWM level (not toward a fixed duty-cycle
+      // target), exactly like a capacitor smoothing a PWM output: while the
+      // signal is HIGH it charges toward Vsupply, while LOW it discharges
+      // toward 0V, each with the same exponential time constant RC. That's
+      // what puts real switching ripple on the average line (and, since the
+      // LED/motor read this same per-frame value, the same ripple on them).
+      // Manual: RC lives in state.filterRC (ms), exposed as the "Filter RC
+      // Time Constant" slider -- drag it instead of editing code. Larger RC
+      // vs. the period = smoother output with more lag; smaller RC vs. the
+      // period = more visible ripple.
+
+      function stepSimulation(dtMs) {
+        const period = 1000 / state.freq; // ms
+        const dutyFrac = state.duty / 100;
+        const timeWindow = Math.min(4000, Math.max(300, period * 8));
+
+        // Sub-step so fast periods don't alias, and so each HIGH/LOW edge
+        // gets its own sample -- the exponential/spring updates below are
+        // exact (or accurate enough) for any step, this is only about
+        // catching the edges themselves.
+        const subStep = Math.max(0.1, Math.min(2, period / 20));
+        let remaining = dtMs;
+        while (remaining > 0) {
+          const step = Math.min(subStep, remaining);
+          const curPeriod = 1000 / state.freq;
+          const curDutyFrac = state.duty / 100;
+
+          sim.clock += step;
+          sim.phaseFrac += step / curPeriod;
+          if (sim.phaseFrac >= 1) sim.phaseFrac -= Math.floor(sim.phaseFrac);
+          const instant = sim.phaseFrac < curDutyFrac ? 1 : 0;
+
+          if (state.mode === "reactive") {
+            // Exact exponential step: v += (target - v) * (1 - e^(-dt/RC))
+            const alpha = 1 - Math.exp(-step / state.filterRC);
+            sim.filterFrac += (instant - sim.filterFrac) * alpha;
+          } else {
+            const accel =
+              state.filterStiffness * (curDutyFrac - sim.filterFrac) -
+              state.filterDamping * sim.filterVel;
+            sim.filterVel += accel * (step / 1000);
+            sim.filterFrac += sim.filterVel * (step / 1000);
+          }
+
+          sim.history.push({
+            t: sim.clock,
+            value: instant,
+            filtered: sim.filterFrac,
+          });
+          remaining -= step;
+        }
+
+        const cutoff = sim.clock - timeWindow;
+        while (sim.history.length && sim.history[0].t < cutoff) {
+          sim.history.shift();
+        }
+      }
+
+      function drawProgressive(padL, gw, gh, padT, highY, lowY) {
+        const period = 1000 / state.freq;
+        const timeWindow = Math.min(4000, Math.max(300, period * 8));
+        const cutoff = sim.clock - timeWindow;
+
+        ctx.strokeStyle = "#22d3ee";
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "rgba(34, 211, 238, 0.6)";
+        ctx.beginPath();
+
+        let first = true;
+        let prevVal = null;
+        let lastX = padL;
+        for (const s of sim.history) {
+          if (s.t < cutoff) continue;
+          const x = padL + gw * ((s.t - cutoff) / timeWindow);
+          const y = s.value ? highY : lowY;
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else if (prevVal !== null && prevVal !== s.value) {
+            ctx.lineTo(x, prevVal ? highY : lowY);
+            ctx.lineTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+          prevVal = s.value;
+          lastX = x;
+        }
+        if (!first) ctx.lineTo(padL + gw, prevVal ? highY : lowY);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Filtered / average trace
+        ctx.strokeStyle = "#fb923c";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        first = true;
+        let lastFiltered = state.duty / 100;
+        for (const s of sim.history) {
+          if (s.t < cutoff) continue;
+          const x = padL + gw * ((s.t - cutoff) / timeWindow);
+          const y = padT + gh * 0.12 + gh * 0.76 * (1 - s.filtered);
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else {
+            ctx.lineTo(x, y);
+          }
+          lastFiltered = s.filtered;
+        }
+        ctx.stroke();
+
+        return lastFiltered;
+      }
+
+      function drawStationary(padL, gw, gh, padT, highY, lowY) {
+        const period = 1000 / state.freq;
+        const dutyFrac = state.duty / 100;
+        const timeWindow = Math.min(4000, Math.max(300, period * 8));
+
+        ctx.strokeStyle = "#22d3ee";
+        ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "rgba(34, 211, 238, 0.6)";
+        ctx.beginPath();
+
+        let prevHigh = null;
+        for (let px = 0; px <= gw; px++) {
+          const t = ((px / gw) * timeWindow) % period;
+          const isHigh = t < period * dutyFrac;
+          const y = isHigh ? highY : lowY;
+          const x = padL + px;
+
+          if (px === 0) {
+            ctx.moveTo(x, y);
+          } else if (isHigh !== prevHigh) {
+            ctx.lineTo(x, prevHigh ? highY : lowY);
+            ctx.lineTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+          prevHigh = isHigh;
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Instant average line -- no transient, so period/duty effects are isolated
+        const avgY = padT + gh * 0.12 + gh * 0.76 * (1 - dutyFrac);
+        ctx.strokeStyle = "#fb923c";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.moveTo(padL, avgY);
+        ctx.lineTo(padL + gw, avgY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        return dutyFrac;
+      }
+
+      function draw(ts) {
+        const rect = wrap.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+
+        if (lastTs === null) lastTs = ts;
+        let dt = ts - lastTs;
+        lastTs = ts;
+        dt = Math.min(dt, 50); // clamp jumps from a backgrounded tab
+
+        const isLive = state.mode !== "stationary";
+
+        if (isLive && state.playing) {
+          stepSimulation(dt * state.speed * TIME_SCALE);
+        }
+
+        ctx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 20;
+        const padB = 26;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(w, h, padL, padR, padT, padB);
+
+        const highY = padT + gh * 0.12;
+        const lowY = padT + gh * 0.88;
+
+        const avgFrac = isLive
+          ? drawProgressive(padL, gw, gh, padT, highY, lowY)
+          : drawStationary(padL, gw, gh, padT, highY, lowY);
+
+        // Freeze the LED/motor along with the trace when a live mode is
+        // paused; Stationary has no play/pause, so they stay live with it.
+        const physicalDt = isLive && !state.playing ? 0 : dt;
+        updatePhysicalIndicators(avgFrac, physicalDt);
+
+        // Labels
+        ctx.fillStyle = "#8b93ad";
+        ctx.font = "12px monospace";
+        ctx.fillText(state.vsupply + "V", 4, highY + 4);
+        ctx.fillText("0V", 4, lowY + 4);
+
+        ctx.fillStyle = "#fb923c";
+        const avgY = padT + gh * 0.12 + gh * 0.76 * (1 - avgFrac);
+        ctx.fillText(
+          "Vavg = " + (avgFrac * state.vsupply).toFixed(2) + "V",
+          padL + gw - 110,
+          Math.max(padT + 12, avgY - 8),
+        );
+
+        requestAnimationFrame(draw);
+      }
+
+      // ---- Event wiring ----
+      function setFrequency(hz) {
+        state.freq = Math.max(1, Math.round(hz));
+        // The slider only spans its own min/max -- clamp its handle there,
+        // but let the number field hold the real (possibly larger) value.
+        freqRange.value = Math.min(
+          Math.max(state.freq, parseFloat(freqRange.min)),
+          parseFloat(freqRange.max),
+        );
+        freqNumber.value = state.freq;
+        document.getElementById("freqVal").textContent = state.freq;
+        updateMetricsUI();
+      }
+
+      freqRange.addEventListener("input", (e) => {
+        setFrequency(parseInt(e.target.value, 10));
+      });
+
+      freqNumber.addEventListener("input", (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!Number.isNaN(val) && val > 0) setFrequency(val);
+      });
+
+      dutyRange.addEventListener("input", (e) => {
+        state.duty = parseInt(e.target.value, 10);
+        document.getElementById("dutyVal").textContent = state.duty;
+        updateMetricsUI();
+      });
+
+      speedRange.addEventListener("input", (e) => {
+        state.speed = parseFloat(e.target.value);
+        document.getElementById("speedVal").textContent =
+          state.speed.toFixed(1);
+      });
+
+      stiffnessRange.addEventListener("input", (e) => {
+        state.filterStiffness = parseFloat(e.target.value);
+        document.getElementById("stiffnessVal").textContent =
+          state.filterStiffness;
+      });
+
+      dampingRange.addEventListener("input", (e) => {
+        state.filterDamping = parseFloat(e.target.value);
+        document.getElementById("dampingVal").textContent =
+          state.filterDamping;
+      });
+
+      rcRange.addEventListener("input", (e) => {
+        state.filterRC = parseFloat(e.target.value);
+        document.getElementById("rcVal").textContent = state.filterRC;
+      });
+
+      voltageSelect.addEventListener("change", (e) => {
+        state.vsupply = parseFloat(e.target.value);
+        updateMetricsUI();
+      });
+
+      clockSelect.addEventListener("change", (e) => {
+        state.clock = parseInt(e.target.value, 10);
+        updateMetricsUI();
+      });
+
+      playBtn.addEventListener("click", () => {
+        state.playing = !state.playing;
+        playBtn.innerHTML = state.playing
+          ? "&#9654; Play"
+          : "&#10074;&#10074; Pause";
+      });
+
+      function setMode(mode) {
+        state.mode = mode;
+        modeProgressiveBtn.classList.toggle("active", mode === "progressive");
+        modeStationaryBtn.classList.toggle("active", mode === "stationary");
+        modeReactiveBtn.classList.toggle("active", mode === "reactive");
+        modeDesc.textContent = modeDescriptions[mode];
+
+        const isLive = mode !== "stationary";
+        playBtn.disabled = !isLive;
+        speedRange.disabled = !isLive;
+        speedGroup.classList.toggle("control-hidden", !isLive);
+
+        const showSpring = mode === "progressive";
+        stiffnessRange.disabled = !showSpring;
+        dampingRange.disabled = !showSpring;
+        stiffnessGroup.classList.toggle("control-hidden", !showSpring);
+        dampingGroup.classList.toggle("control-hidden", !showSpring);
+
+        const showRC = mode === "reactive";
+        rcRange.disabled = !showRC;
+        rcGroup.classList.toggle("control-hidden", !showRC);
+
+        if (isLive) resetSim();
+      }
+
+      modeProgressiveBtn.addEventListener("click", () =>
+        setMode("progressive"),
+      );
+      modeStationaryBtn.addEventListener("click", () => setMode("stationary"));
+      modeReactiveBtn.addEventListener("click", () => setMode("reactive"));
+
+      document.querySelectorAll(".preset-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const val = parseInt(btn.dataset.duty, 10);
+          state.duty = val;
+          dutyRange.value = val;
+          document.getElementById("dutyVal").textContent = val;
+          updateMetricsUI();
+        });
+      });
+
+      resetBtn.addEventListener("click", () => {
+        state.freq = DEFAULTS.freq;
+        state.duty = DEFAULTS.duty;
+        state.vsupply = DEFAULTS.vsupply;
+        state.clock = DEFAULTS.clock;
+        state.speed = DEFAULTS.speed;
+        state.filterStiffness = DEFAULTS.filterStiffness;
+        state.filterDamping = DEFAULTS.filterDamping;
+        state.filterRC = DEFAULTS.filterRC;
+        state.playing = true;
+        resetSim();
+
+        syncControlsFromState();
+        playBtn.innerHTML = "&#9654; Play";
+
+        setMode(DEFAULTS.mode);
+        updateMetricsUI();
+      });
+
+      // Drive every input's on-screen value from DEFAULTS/state at load time
+      // instead of trusting the HTML's static value="" attributes to match --
+      // that's what let the damping slider's handle drift out of sync with
+      // the number actually driving the simulation.
+      function syncControlsFromState() {
+        freqRange.value = state.freq;
+        freqNumber.value = state.freq;
+        dutyRange.value = state.duty;
+        speedRange.value = state.speed;
+        stiffnessRange.value = state.filterStiffness;
+        dampingRange.value = state.filterDamping;
+        rcRange.value = state.filterRC;
+        voltageSelect.value = String(state.vsupply);
+        clockSelect.value = String(state.clock);
+        document.getElementById("freqVal").textContent = state.freq;
+        document.getElementById("dutyVal").textContent = state.duty;
+        document.getElementById("speedVal").textContent =
+          state.speed.toFixed(1);
+        document.getElementById("stiffnessVal").textContent =
+          state.filterStiffness;
+        document.getElementById("dampingVal").textContent =
+          state.filterDamping;
+        document.getElementById("rcVal").textContent = state.filterRC;
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      syncControlsFromState();
+      setMode(DEFAULTS.mode);
+      updateMetricsUI();
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>
