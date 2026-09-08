@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hardware Timer Simulator</title>
+    <title>Pulse Capture Simulator</title>
     <style>
       :root {
         --bg: #0b0f1a;
@@ -13,7 +13,7 @@
         --green: #86efac;
         --orange: #fb923c;
         --red: #f87171;
-        --purple: #c084fc;
+        --yellow: #facc15;
         --text: #e5e9f5;
         --dim: #8b93ad;
       }
@@ -93,6 +93,7 @@
         margin-top: 6px;
         margin-bottom: 14px;
         font-size: 0.8rem;
+        line-height: 1.4;
       }
 
       .box .label {
@@ -144,12 +145,12 @@
         height: 46px;
       }
 
-      .canvas-wrap.counter {
-        height: 220px;
+      .canvas-wrap.pulse {
+        height: 60px;
       }
 
-      .canvas-wrap.channels {
-        height: 170px;
+      .canvas-wrap.counter {
+        height: 260px;
       }
 
       canvas {
@@ -267,6 +268,25 @@
         line-height: 1.4;
       }
 
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
+
+      #triggerPulseBtn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--yellow);
+        color: var(--yellow);
+      }
+
+      #triggerPulseBtn:hover {
+        background: rgba(250, 204, 21, 0.15);
+      }
+
       #resetBtn {
         width: 100%;
         background: transparent;
@@ -286,9 +306,9 @@
     </style>
   </head>
   <body>
-    <h1>Hardware Timer Simulator</h1>
+    <h1>Pulse Capture Simulator</h1>
     <div class="subtitle">
-      Counter, load register, and PWM compare-channel visualization
+      Reset-on-rising, capture-on-falling pulse width measurement
     </div>
 
     <div class="layout">
@@ -296,67 +316,46 @@
       <div class="panel metrics-panel">
         <h2>Real-time Metrics</h2>
         <div class="metric">
+          <span>Status</span><span class="val" id="mStatus">Idle</span>
+        </div>
+        <div class="metric">
           <span>Counter</span><span class="val" id="mCounter">0</span>
         </div>
         <div class="metric">
           <span>Clock Speed</span><span class="val" id="mClock">Medium</span>
         </div>
         <div class="metric">
-          <span>Period (Ticks)</span><span class="val" id="mPeriod">16</span>
+          <span>Configured Pulse Width</span
+          ><span class="val" id="mConfigured">8 ticks</span>
         </div>
-        <div class="metric">
-          <span>CH1 On-Time</span><span class="val" id="mCh1">25%</span>
-        </div>
-        <div class="metric">
-          <span>CH2 On-Time</span><span class="val" id="mCh2">50%</span>
-        </div>
-        <div class="metric">
-          <span>CH3 On-Time</span><span class="val" id="mCh3">75%</span>
+        <div class="metric" style="border-left-color: var(--yellow)">
+          <span>Captured Value</span
+          ><span class="val" id="mCaptured" style="color: var(--yellow)"
+            >--</span
+          >
         </div>
 
         <div class="box">
           <div class="label">How it works</div>
-          Counter increments by 1 on every clock tick. It resets to 0 the
-          instant it reaches the Load Register. Each channel's pin is HIGH
-          while Counter &lt; its Compare Register, and LOW otherwise.
+          The counter is held at 0 while the input pin is LOW. The instant
+          the pin goes HIGH (rising edge), the counter is zeroed and starts
+          counting on every clock tick after that. The instant the pin goes
+          LOW again (falling edge), the current count is latched into the
+          Capture Register. Because the rising-edge tick itself reads 0, the
+          captured value is one tick less than the configured pulse width --
+          a classic edge-counting gotcha worth watching for on real
+          hardware.
         </div>
 
         <h2 style="margin-top: 4px">Registers</h2>
         <div class="reg-row">
           <span
-            ><span class="reg-swatch" style="background: var(--red)"></span
-            >Load Register</span
-          ><span class="val" id="regLoad">16</span>
+            ><span class="reg-swatch" style="background: var(--yellow)"></span
+            >Capture Register</span
+          ><span class="val" id="regCapture">--</span>
         </div>
         <div class="reg-row">
-          <span class="hex" id="regLoadHex">0x10</span>
-        </div>
-        <div class="reg-row">
-          <span
-            ><span class="reg-swatch" style="background: var(--cyan)"></span
-            >Compare 1 (CH1)</span
-          ><span class="val" id="regCh1">4</span>
-        </div>
-        <div class="reg-row">
-          <span class="hex" id="regCh1Hex">0x04</span>
-        </div>
-        <div class="reg-row">
-          <span
-            ><span class="reg-swatch" style="background: var(--green)"></span
-            >Compare 2 (CH2)</span
-          ><span class="val" id="regCh2">8</span>
-        </div>
-        <div class="reg-row">
-          <span class="hex" id="regCh2Hex">0x08</span>
-        </div>
-        <div class="reg-row">
-          <span
-            ><span class="reg-swatch" style="background: var(--purple)"></span
-            >Compare 3 (CH3)</span
-          ><span class="val" id="regCh3">12</span>
-        </div>
-        <div class="reg-row">
-          <span class="hex" id="regCh3Hex">0x0C</span>
+          <span class="hex" id="regCaptureHex">--</span>
         </div>
       </div>
 
@@ -367,32 +366,28 @@
           <canvas id="clockCanvas"></canvas>
         </div>
 
+        <div class="graph-label">Input Pulse</div>
+        <div class="canvas-wrap pulse">
+          <canvas id="pulseCanvas"></canvas>
+        </div>
+
         <div class="graph-label">Counter (Timer Value)</div>
         <div class="canvas-wrap counter">
           <canvas id="counterCanvas"></canvas>
         </div>
 
-        <div class="graph-label">PWM Channel Outputs</div>
-        <div class="canvas-wrap channels">
-          <canvas id="channelCanvas"></canvas>
-        </div>
-
         <div class="legend">
           <span
-            ><span class="swatch" style="background: var(--red)"></span>Load
-            Register (reset)</span
+            ><span class="swatch" style="background: var(--yellow)"></span
+            >Input Pulse</span
           >
           <span
-            ><span class="swatch" style="background: var(--cyan)"></span
-            >Compare 1 / CH1</span
+            ><span class="swatch" style="background: var(--text)"></span
+            >Counter</span
           >
           <span
-            ><span class="swatch" style="background: var(--green)"></span
-            >Compare 2 / CH2</span
-          >
-          <span
-            ><span class="swatch" style="background: var(--purple)"></span
-            >Compare 3 / CH3</span
+            ><span class="swatch" style="background: var(--orange)"></span
+            >Capture Event</span
           >
         </div>
 
@@ -419,51 +414,15 @@
 
         <div class="control-group">
           <label
-            >Load Register (Period): <span id="loadVal">16</span> ticks</label
+            >Pulse Width: <span id="pulseWidthVal">8</span> ticks</label
           >
           <input
             type="range"
-            id="loadRange"
-            min="2"
-            max="64"
-            step="1"
-            value="16"
-          />
-        </div>
-
-        <div class="control-group">
-          <label>Compare 1 (CH1): <span id="ch1Val">4</span></label>
-          <input
-            type="range"
-            id="ch1Range"
-            min="0"
-            max="16"
-            step="1"
-            value="4"
-          />
-        </div>
-
-        <div class="control-group">
-          <label>Compare 2 (CH2): <span id="ch2Val">8</span></label>
-          <input
-            type="range"
-            id="ch2Range"
-            min="0"
-            max="16"
+            id="pulseWidthRange"
+            min="1"
+            max="32"
             step="1"
             value="8"
-          />
-        </div>
-
-        <div class="control-group">
-          <label>Compare 3 (CH3): <span id="ch3Val">12</span></label>
-          <input
-            type="range"
-            id="ch3Range"
-            min="0"
-            max="16"
-            step="1"
-            value="12"
           />
         </div>
 
@@ -477,6 +436,16 @@
           </select>
         </div>
 
+        <div class="control-group">
+          <button id="triggerPulseBtn">Trigger Pulse</button>
+          <div class="checkbox-row">
+            <input type="checkbox" id="autoRepeatCheck" />
+            <label for="autoRepeatCheck" style="margin: 0"
+              >Auto-repeat</label
+            >
+          </div>
+        </div>
+
         <button id="resetBtn">Reset View</button>
       </div>
     </div>
@@ -484,21 +453,20 @@
     <script>
       // ---- DOM refs ----
       const clockCanvas = document.getElementById("clockCanvas");
+      const pulseCanvas = document.getElementById("pulseCanvas");
       const counterCanvas = document.getElementById("counterCanvas");
-      const channelCanvas = document.getElementById("channelCanvas");
       const clockCtx = clockCanvas.getContext("2d");
+      const pulseCtx = pulseCanvas.getContext("2d");
       const counterCtx = counterCanvas.getContext("2d");
-      const channelCtx = channelCanvas.getContext("2d");
 
-      const loadRange = document.getElementById("loadRange");
-      const ch1Range = document.getElementById("ch1Range");
-      const ch2Range = document.getElementById("ch2Range");
-      const ch3Range = document.getElementById("ch3Range");
-      const voltageSelect = document.getElementById("voltageSelect");
       const speedLowBtn = document.getElementById("speedLow");
       const speedMediumBtn = document.getElementById("speedMedium");
       const speedHighBtn = document.getElementById("speedHigh");
       const clockDesc = document.getElementById("clockDesc");
+      const pulseWidthRange = document.getElementById("pulseWidthRange");
+      const voltageSelect = document.getElementById("voltageSelect");
+      const triggerPulseBtn = document.getElementById("triggerPulseBtn");
+      const autoRepeatCheck = document.getElementById("autoRepeatCheck");
       const startStopBtn = document.getElementById("startStopBtn");
       const resetBtn = document.getElementById("resetBtn");
 
@@ -506,15 +474,17 @@
       // is faster. Drag the Clock Speed buttons instead of editing code.
       const TICK_INTERVALS = { low: 900, medium: 350, high: 100 };
 
+      // Manual: fixed idle gap (ticks) auto-repeat waits after a capture
+      // before firing the next pulse -- not exposed as a control, kept
+      // simple since Pulse Width already covers the interesting variable.
+      const PULSE_IDLE_GAP = 4;
+
       // Manual: defaults are read straight from each control's HTML value=""
       // (and whichever segmented speed button carries class="active")
       // instead of being duplicated as JS literals -- edit the markup in the
       // file and both the on-load state and Reset View pick it up.
       const DEFAULTS = {
-        load: parseInt(loadRange.value, 10),
-        ch1: parseInt(ch1Range.value, 10),
-        ch2: parseInt(ch2Range.value, 10),
-        ch3: parseInt(ch3Range.value, 10),
+        pulseWidth: parseInt(pulseWidthRange.value, 10),
         vsupply: parseFloat(voltageSelect.value),
         speed: speedLowBtn.classList.contains("active")
           ? "low"
@@ -524,14 +494,31 @@
       };
 
       const state = {
-        load: DEFAULTS.load,
-        ch1: DEFAULTS.ch1,
-        ch2: DEFAULTS.ch2,
-        ch3: DEFAULTS.ch3,
+        pulseWidth: DEFAULTS.pulseWidth,
         vsupply: DEFAULTS.vsupply,
         speed: DEFAULTS.speed,
         playing: false,
       };
+
+      // The input pulse generator: an external signal the user triggers.
+      // `level` is what actually drives the counter's zero/count/capture
+      // behavior in doTick() below.
+      const pulse = {
+        level: 0,
+        phaseTicks: 0,
+        pendingTrigger: false,
+        autoRepeat: false,
+        captureTick: null,
+        captureValue: null,
+      };
+
+      function resetPulse() {
+        pulse.level = 0;
+        pulse.phaseTicks = 0;
+        pulse.pendingTrigger = false;
+        pulse.captureTick = null;
+        pulse.captureValue = null;
+      }
 
       // Live counter/history state. Every entry is one real clock tick, so
       // (unlike a continuously-scrolling scope) this is a genuinely discrete,
@@ -540,7 +527,7 @@
         counter: 0,
         tickIndex: 0,
         tickAcc: 0, // ms accumulated toward the next tick
-        history: [], // { tick, counter, ch1, ch2, ch3 } (0/1 pin states)
+        history: [], // { tick, counter, pulse } (pulse is 0/1)
       };
 
       function resetSim() {
@@ -551,68 +538,96 @@
       }
 
       function toHex(n) {
-        return "0x" + Math.max(0, n).toString(16).toUpperCase().padStart(2, "0");
+        return (
+          "0x" + Math.max(0, n).toString(16).toUpperCase().padStart(2, "0")
+        );
       }
 
-      // ---- Register clamping ----
-      function clampCompareRanges() {
-        [ch1Range, ch2Range, ch3Range].forEach((r) => (r.max = state.load));
-        state.ch1 = Math.min(state.ch1, state.load);
-        state.ch2 = Math.min(state.ch2, state.load);
-        state.ch3 = Math.min(state.ch3, state.load);
+      // Advances the pulse generator by one tick and reports which edge (if
+      // any) occurred, so doTick() can drive the counter off it.
+      function advancePulseTick() {
+        const prevLevel = pulse.level;
+        if (pulse.level === 1) {
+          pulse.phaseTicks++;
+          if (pulse.phaseTicks >= state.pulseWidth) {
+            pulse.level = 0;
+            pulse.phaseTicks = 0;
+          }
+        } else if (pulse.pendingTrigger) {
+          pulse.level = 1;
+          pulse.phaseTicks = 0;
+          pulse.pendingTrigger = false;
+        } else if (pulse.autoRepeat) {
+          pulse.phaseTicks++;
+          if (pulse.phaseTicks >= PULSE_IDLE_GAP) {
+            pulse.level = 1;
+            pulse.phaseTicks = 0;
+          }
+        }
+        return {
+          rising: prevLevel === 0 && pulse.level === 1,
+          falling: prevLevel === 1 && pulse.level === 0,
+        };
       }
 
       // ---- Simulation tick ----
       function doTick() {
         sim.tickIndex++;
-        // Reaching the Load Register is one tick; resetting to 0 is the
-        // *next* tick -- so both are their own visible plateau on the graph
-        // instead of the reset being folded invisibly into the next step.
-        sim.counter = sim.counter >= state.load ? 0 : sim.counter + 1;
-        const counter = sim.counter;
+        const edge = advancePulseTick();
+
+        if (edge.rising) {
+          // Zero condition: the rising edge resets the counter right here.
+          sim.counter = 0;
+        } else if (pulse.level === 1) {
+          // Still high -- keep counting.
+          sim.counter += 1;
+        } else if (edge.falling) {
+          // Falling edge: latch whatever the counter currently holds. Leave
+          // it displayed at that value for this one tick (a visible peak)
+          // before the idle branch zeroes it on the next tick.
+          pulse.captureValue = sim.counter;
+          pulse.captureTick = sim.tickIndex;
+        } else {
+          sim.counter = 0; // idle
+        }
+
         sim.history.push({
           tick: sim.tickIndex,
-          counter,
-          ch1: counter < state.ch1 ? 1 : 0,
-          ch2: counter < state.ch2 ? 1 : 0,
-          ch3: counter < state.ch3 ? 1 : 0,
+          counter: sim.counter,
+          pulse: pulse.level,
         });
       }
 
-      // Manual: how many ticks stay visible in the scrolling window -- three
-      // full periods, floored/capped so very short or long periods still
-      // read well.
+      // Manual: how many ticks stay visible in the scrolling window.
       function visibleTicks() {
-        return Math.max(24, Math.min(150, state.load * 3));
+        return Math.max(24, Math.min(150, state.pulseWidth * 4));
       }
 
       function updateMetricsUI() {
+        document.getElementById("mStatus").textContent = pulse.level
+          ? "Counting"
+          : "Idle";
         document.getElementById("mCounter").textContent = sim.counter;
         document.getElementById("mClock").textContent =
           state.speed[0].toUpperCase() + state.speed.slice(1);
-        document.getElementById("mPeriod").textContent = state.load;
-        document.getElementById("mCh1").textContent =
-          Math.round((state.ch1 / state.load) * 100) + "%";
-        document.getElementById("mCh2").textContent =
-          Math.round((state.ch2 / state.load) * 100) + "%";
-        document.getElementById("mCh3").textContent =
-          Math.round((state.ch3 / state.load) * 100) + "%";
+        document.getElementById("mConfigured").textContent =
+          state.pulseWidth + " ticks";
+        document.getElementById("mCaptured").textContent =
+          pulse.captureValue === null
+            ? "--"
+            : pulse.captureValue + " ticks";
 
-        document.getElementById("regLoad").textContent = state.load;
-        document.getElementById("regLoadHex").textContent = toHex(state.load);
-        document.getElementById("regCh1").textContent = state.ch1;
-        document.getElementById("regCh1Hex").textContent = toHex(state.ch1);
-        document.getElementById("regCh2").textContent = state.ch2;
-        document.getElementById("regCh2Hex").textContent = toHex(state.ch2);
-        document.getElementById("regCh3").textContent = state.ch3;
-        document.getElementById("regCh3Hex").textContent = toHex(state.ch3);
+        document.getElementById("regCapture").textContent =
+          pulse.captureValue === null ? "--" : pulse.captureValue;
+        document.getElementById("regCaptureHex").textContent =
+          pulse.captureValue === null ? "--" : toHex(pulse.captureValue);
       }
 
       // ---- Canvas setup ----
       const canvases = [
         { canvas: clockCanvas, ctx: clockCtx },
+        { canvas: pulseCanvas, ctx: pulseCtx },
         { canvas: counterCanvas, ctx: counterCtx },
-        { canvas: channelCanvas, ctx: channelCtx },
       ];
 
       function resizeCanvases() {
@@ -648,7 +663,7 @@
 
       // Draws a step/staircase trace through samples newer than `cutoff`
       // ticks, mapping each sample's value through yFn. Shared by the clock,
-      // counter, and channel graphs -- only the value + y-mapping differ.
+      // pulse, and counter graphs -- only the value + y-mapping differ.
       function drawStepTrace(ctx, padL, gw, cutoff, span, valueFn, yFn, color) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 2.5;
@@ -714,6 +729,44 @@
         clockCtx.fillText("CLK", 4, h / 2 + 4);
       }
 
+      function drawPulseGraph() {
+        const rect = pulseCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        pulseCtx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 8;
+        const padB = 8;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(pulseCtx, w, h, padL, padR, padT, padB, 12);
+
+        const span = visibleTicks();
+        const cutoff = sim.tickIndex - span;
+        const highY = padT + gh * 0.15;
+        const lowY = padT + gh * 0.85;
+        const rootStyle = getComputedStyle(document.documentElement);
+        const color = rootStyle.getPropertyValue("--yellow").trim();
+
+        drawStepTrace(
+          pulseCtx,
+          padL,
+          gw,
+          cutoff,
+          span,
+          (s) => s.pulse,
+          (v) => (v ? highY : lowY),
+          color,
+        );
+
+        pulseCtx.fillStyle = color;
+        pulseCtx.font = "11px monospace";
+        pulseCtx.fillText("IN (" + state.vsupply + "V)", 4, highY + 4);
+      }
+
       function drawCounterGraph() {
         const rect = counterCanvas.parentElement.getBoundingClientRect();
         const w = rect.width;
@@ -731,31 +784,11 @@
 
         const span = visibleTicks();
         const cutoff = sim.tickIndex - span;
-        const yFor = (v) => padT + gh * (1 - v / state.load);
-
-        // Compare-register reference lines
-        const refs = [
-          { v: state.load, cssVar: "--red", label: "Load" },
-          { v: state.ch1, cssVar: "--cyan", label: "CH1" },
-          { v: state.ch2, cssVar: "--green", label: "CH2" },
-          { v: state.ch3, cssVar: "--purple", label: "CH3" },
-        ];
-        const rootStyle = getComputedStyle(document.documentElement);
-        counterCtx.font = "10px monospace";
-        counterCtx.setLineDash([6, 5]);
-        counterCtx.lineWidth = 1.5;
-        for (const ref of refs) {
-          const color = rootStyle.getPropertyValue(ref.cssVar).trim();
-          const y = yFor(ref.v);
-          counterCtx.strokeStyle = color;
-          counterCtx.beginPath();
-          counterCtx.moveTo(padL, y);
-          counterCtx.lineTo(padL + gw, y);
-          counterCtx.stroke();
-          counterCtx.fillStyle = color;
-          counterCtx.fillText(ref.label + " " + ref.v, padL + gw - 60, y - 4);
-        }
-        counterCtx.setLineDash([]);
+        // The counter's realistic ceiling is pulseWidth - 1 (the rising
+        // tick itself reads 0), so scale the axis to the configured width
+        // with a little headroom.
+        const axisMax = Math.max(4, state.pulseWidth);
+        const yFor = (v) => padT + gh * (1 - v / axisMax);
 
         drawStepTrace(
           counterCtx,
@@ -768,62 +801,28 @@
           "#e5e9f5",
         );
 
+        // Mark the capture event, when still visible in the window.
+        if (pulse.captureTick !== null && pulse.captureTick >= cutoff) {
+          const x = padL + gw * ((pulse.captureTick - cutoff) / span);
+          const y = yFor(pulse.captureValue);
+          const rootStyle = getComputedStyle(document.documentElement);
+          const color = rootStyle.getPropertyValue("--orange").trim();
+          counterCtx.fillStyle = color;
+          counterCtx.beginPath();
+          counterCtx.arc(x, y, 4, 0, Math.PI * 2);
+          counterCtx.fill();
+          counterCtx.font = "11px monospace";
+          counterCtx.fillText(
+            "Captured: " + pulse.captureValue,
+            Math.min(x + 6, padL + gw - 90),
+            y - 8,
+          );
+        }
+
         counterCtx.fillStyle = "#8b93ad";
-        counterCtx.fillText(state.load + "", 4, padT + 4);
+        counterCtx.font = "10px monospace";
+        counterCtx.fillText(axisMax + "", 4, padT + 4);
         counterCtx.fillText("0", 4, padT + gh + 4);
-      }
-
-      function drawChannelGraph() {
-        const rect = channelCanvas.parentElement.getBoundingClientRect();
-        const w = rect.width;
-        const h = rect.height;
-        channelCtx.clearRect(0, 0, w, h);
-
-        const padL = 46;
-        const padR = 16;
-        const padT = 6;
-        const padB = 6;
-        const gw = w - padL - padR;
-        const gh = h - padT - padB;
-
-        drawGrid(channelCtx, w, h, padL, padR, padT, padB, 12);
-
-        const span = visibleTicks();
-        const cutoff = sim.tickIndex - span;
-        const laneH = gh / 3;
-        const rootStyle = getComputedStyle(document.documentElement);
-
-        const lanes = [
-          { key: "ch1", cssVar: "--cyan", label: "CH1" },
-          { key: "ch2", cssVar: "--green", label: "CH2" },
-          { key: "ch3", cssVar: "--purple", label: "CH3" },
-        ];
-
-        lanes.forEach((lane, i) => {
-          const laneTop = padT + laneH * i;
-          const highY = laneTop + laneH * 0.2;
-          const lowY = laneTop + laneH * 0.8;
-          const color = rootStyle.getPropertyValue(lane.cssVar).trim();
-
-          drawStepTrace(
-            channelCtx,
-            padL,
-            gw,
-            cutoff,
-            span,
-            (s) => s[lane.key],
-            (v) => (v ? highY : lowY),
-            color,
-          );
-
-          channelCtx.fillStyle = color;
-          channelCtx.font = "11px monospace";
-          channelCtx.fillText(
-            lane.label + " (" + state.vsupply + "V)",
-            4,
-            highY + 4,
-          );
-        });
       }
 
       // ---- Main loop ----
@@ -850,44 +849,14 @@
         }
 
         drawClockGraph();
+        drawPulseGraph();
         drawCounterGraph();
-        drawChannelGraph();
-        document.getElementById("mCounter").textContent = sim.counter;
+        updateMetricsUI();
 
         requestAnimationFrame(draw);
       }
 
       // ---- Event wiring ----
-      loadRange.addEventListener("input", (e) => {
-        state.load = parseInt(e.target.value, 10);
-        document.getElementById("loadVal").textContent = state.load;
-        clampCompareRanges();
-        syncControlsFromState();
-        updateMetricsUI();
-      });
-
-      ch1Range.addEventListener("input", (e) => {
-        state.ch1 = parseInt(e.target.value, 10);
-        document.getElementById("ch1Val").textContent = state.ch1;
-        updateMetricsUI();
-      });
-
-      ch2Range.addEventListener("input", (e) => {
-        state.ch2 = parseInt(e.target.value, 10);
-        document.getElementById("ch2Val").textContent = state.ch2;
-        updateMetricsUI();
-      });
-
-      ch3Range.addEventListener("input", (e) => {
-        state.ch3 = parseInt(e.target.value, 10);
-        document.getElementById("ch3Val").textContent = state.ch3;
-        updateMetricsUI();
-      });
-
-      voltageSelect.addEventListener("change", (e) => {
-        state.vsupply = parseFloat(e.target.value);
-      });
-
       function setSpeed(speed) {
         state.speed = speed;
         speedLowBtn.classList.toggle("active", speed === "low");
@@ -903,6 +872,24 @@
       speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
       speedHighBtn.addEventListener("click", () => setSpeed("high"));
 
+      pulseWidthRange.addEventListener("input", (e) => {
+        state.pulseWidth = parseInt(e.target.value, 10);
+        document.getElementById("pulseWidthVal").textContent =
+          state.pulseWidth;
+      });
+
+      voltageSelect.addEventListener("change", (e) => {
+        state.vsupply = parseFloat(e.target.value);
+      });
+
+      triggerPulseBtn.addEventListener("click", () => {
+        pulse.pendingTrigger = true;
+      });
+
+      autoRepeatCheck.addEventListener("change", (e) => {
+        pulse.autoRepeat = e.target.checked;
+      });
+
       startStopBtn.addEventListener("click", () => {
         state.playing = !state.playing;
         startStopBtn.innerHTML = state.playing
@@ -911,14 +898,12 @@
       });
 
       resetBtn.addEventListener("click", () => {
-        state.load = DEFAULTS.load;
-        state.ch1 = DEFAULTS.ch1;
-        state.ch2 = DEFAULTS.ch2;
-        state.ch3 = DEFAULTS.ch3;
+        state.pulseWidth = DEFAULTS.pulseWidth;
         state.vsupply = DEFAULTS.vsupply;
         state.playing = false;
         resetSim();
-        clampCompareRanges();
+        resetPulse();
+        autoRepeatCheck.checked = false;
 
         syncControlsFromState();
         setSpeed(DEFAULTS.speed);
@@ -927,21 +912,12 @@
       });
 
       // Drive every input's on-screen value from state at load time instead
-      // of trusting the HTML's static value="" attributes alone -- keeps the
-      // compare sliders' max in sync with the Load Register too.
+      // of trusting the HTML's static value="" attributes alone to match.
       function syncControlsFromState() {
-        loadRange.value = state.load;
-        ch1Range.max = state.load;
-        ch2Range.max = state.load;
-        ch3Range.max = state.load;
-        ch1Range.value = state.ch1;
-        ch2Range.value = state.ch2;
-        ch3Range.value = state.ch3;
+        pulseWidthRange.value = state.pulseWidth;
         voltageSelect.value = String(state.vsupply);
-        document.getElementById("loadVal").textContent = state.load;
-        document.getElementById("ch1Val").textContent = state.ch1;
-        document.getElementById("ch2Val").textContent = state.ch2;
-        document.getElementById("ch3Val").textContent = state.ch3;
+        document.getElementById("pulseWidthVal").textContent =
+          state.pulseWidth;
       }
 
       window.addEventListener("resize", resizeCanvases);
