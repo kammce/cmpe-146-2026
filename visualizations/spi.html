@@ -1,0 +1,1396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SPI Bus Visualizer</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --green: #86efac;
+        --orange: #fb923c;
+        --red: #f87171;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 24px;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--green);
+        font-size: 2rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: var(--dim);
+        margin-bottom: 24px;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr) 300px;
+        gap: 18px;
+        max-width: 1560px;
+        margin: 0 auto;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      /* Device boxes */
+      .device-box {
+        background: #0e1424;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+      }
+
+      .device-title {
+        color: var(--cyan);
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+
+      .device-sub {
+        color: var(--dim);
+        font-size: 0.78rem;
+        margin-top: 3px;
+      }
+
+      /* MCU <-> Sensor schematic */
+      .schematic-panel {
+        max-width: 1560px;
+        margin: 0 auto 18px;
+      }
+
+      .schematic {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .chip-box {
+        flex: 0 0 150px;
+        background: #0e1424;
+        border: 2px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px 10px;
+        text-align: center;
+      }
+
+      .chip-box .chip-title {
+        color: var(--cyan);
+        font-weight: bold;
+        font-size: 1rem;
+      }
+
+      .chip-box .chip-sub {
+        color: var(--dim);
+        font-size: 0.72rem;
+        margin-top: 4px;
+      }
+
+      .wire-group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        padding: 6px 0;
+      }
+
+      .wire-track {
+        position: relative;
+        height: 4px;
+        background: #232b47;
+        border-radius: 2px;
+        transition:
+          background-color 0.1s linear,
+          box-shadow 0.1s linear;
+      }
+
+      .wire-track .wire-tag {
+        position: absolute;
+        top: -17px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.72rem;
+        white-space: nowrap;
+        color: var(--dim);
+      }
+
+      .wire-track.lit {
+        background-color: currentColor;
+        box-shadow: 0 0 10px 3px currentColor;
+      }
+
+      .wire-track.lit .wire-tag {
+        color: currentColor;
+      }
+
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-left: 3px solid var(--cyan);
+        background: #0e1424;
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 10px;
+        font-size: 0.85rem;
+      }
+
+      .metric .val {
+        color: var(--cyan);
+        font-weight: bold;
+      }
+
+      /* Graph panel */
+      .graph-panel {
+        padding: 16px;
+      }
+
+      .graph-toolbar {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+
+      .toolbar-group {
+        flex: 1;
+        min-width: 150px;
+      }
+
+      .toolbar-group label {
+        font-size: 0.8rem;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        width: 100%;
+        height: 300px;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: #050810;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        display: block;
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--dim);
+        flex-wrap: wrap;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 3px;
+        display: inline-block;
+      }
+
+      .status-line {
+        text-align: center;
+        font-size: 0.8rem;
+        color: var(--dim);
+        margin-top: 8px;
+      }
+
+      /* Controls panel */
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+
+      .control-group {
+        margin-bottom: 18px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--cyan);
+        cursor: pointer;
+      }
+
+      select {
+        width: 100%;
+        background: #0e1424;
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 6px;
+        font-family: inherit;
+      }
+
+      .segmented {
+        display: flex;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .segmented button {
+        flex: 1;
+        background: #0e1424;
+        border: none;
+        color: var(--dim);
+        border-radius: 0;
+        padding: 8px 4px;
+        font-family: inherit;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      .segmented button.active {
+        background: var(--cyan);
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .desc-text {
+        font-size: 0.75rem;
+        color: var(--dim);
+        line-height: 1.4;
+      }
+
+      .byte-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .byte-field {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        background: #0e1424;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 2px 6px;
+      }
+
+      .byte-field .prefix {
+        color: var(--dim);
+        font-size: 0.8rem;
+      }
+
+      .byte-field input {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 0.85rem;
+        padding: 6px 2px;
+        text-transform: uppercase;
+      }
+
+      .byte-field input:focus {
+        outline: none;
+      }
+
+      .byte-field.inactive {
+        opacity: 0.35;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      #csBtn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--orange);
+        color: var(--orange);
+      }
+
+      #csBtn.asserted {
+        background: var(--orange);
+        color: #2a1400;
+        font-weight: bold;
+      }
+
+      #writeBtn,
+      #readBtn {
+        width: 100%;
+        background: linear-gradient(135deg, #22d3ee, #3b82f6);
+        border: none;
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
+
+      #resetBtn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--red);
+        color: var(--red);
+      }
+
+      #resetBtn:hover {
+        background: rgba(248, 113, 113, 0.15);
+      }
+
+      .how-it-works {
+        max-width: 950px;
+        margin: 18px auto 0;
+        padding: 14px 18px;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        background: #1a1206;
+        border: 1px solid #4a3418;
+        border-radius: 6px;
+      }
+
+      .how-it-works .label {
+        color: var(--orange);
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+      }
+
+      @media (max-width: 1050px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SPI Bus Visualizer</h1>
+    <div class="subtitle">
+      Controller &harr; Temperature Sensor &mdash; write/read transactions on
+      a logic-analyzer style trace
+    </div>
+
+    <div class="panel schematic-panel">
+      <div class="schematic">
+        <div class="chip-box">
+          <div class="chip-title">MCU</div>
+          <div class="chip-sub">Controller</div>
+        </div>
+        <div class="wire-group">
+          <div class="wire-track" id="wireCopi" style="color: var(--cyan)">
+            <span class="wire-tag">COPI &rarr;</span>
+          </div>
+          <div class="wire-track" id="wireCipo" style="color: var(--green)">
+            <span class="wire-tag">&larr; CIPO</span>
+          </div>
+          <div class="wire-track" id="wireSck" style="color: var(--dim)">
+            <span class="wire-tag">SCK &rarr;</span>
+          </div>
+          <div class="wire-track" id="wireCs" style="color: var(--orange)">
+            <span class="wire-tag">CS &rarr; (glows when asserted)</span>
+          </div>
+        </div>
+        <div class="chip-box">
+          <div class="chip-title">Temp Sensor</div>
+          <div class="chip-sub">cmd 0xC1 / addr 0xA5</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- Left: devices + status -->
+      <div class="panel devices-panel">
+        <h2>Devices</h2>
+        <div class="device-box">
+          <div class="device-title">Controller</div>
+          <div class="device-sub">Drives SCK, COPI, and CS</div>
+        </div>
+
+        <div class="device-box">
+          <div class="device-title">Temp Sensor</div>
+          <div class="device-sub" id="sensorStatus">
+            Idle (CS released)
+          </div>
+        </div>
+
+        <h2 style="margin-top: 4px">Status</h2>
+        <div class="metric">
+          <span>SPI Mode</span><span class="val" id="mSpiMode">0</span>
+        </div>
+        <div class="metric">
+          <span>Last Write</span><span class="val" id="mLastWrite">--</span>
+        </div>
+        <div class="metric">
+          <span>Last Read</span><span class="val" id="mLastRead">--</span>
+        </div>
+        <div class="metric" style="border-left-color: var(--green)">
+          <span>Last Decoded Temp</span
+          ><span class="val" id="mDecodedTemp" style="color: var(--green)"
+            >--</span
+          >
+        </div>
+        <div class="metric">
+          <span>Simulated Temp</span
+          ><span class="val" id="mSimTemp">25.00 &deg;C</span>
+        </div>
+      </div>
+
+      <!-- Center: logic analyzer -->
+      <div class="panel graph-panel">
+        <div class="graph-toolbar">
+          <div class="toolbar-group">
+            <label>SPI Mode</label>
+            <div class="segmented">
+              <button id="mode0" class="active">0</button>
+              <button id="mode1">1</button>
+              <button id="mode2">2</button>
+              <button id="mode3">3</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label>Clock Speed</label>
+            <div class="segmented">
+              <button id="speedLow">Low</button>
+              <button id="speedMedium" class="active">Medium</button>
+              <button id="speedHigh">High</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label
+              >Graph Zoom: <span id="zoomVal">220</span> steps</label
+            >
+            <input
+              type="range"
+              id="zoomRange"
+              min="32"
+              max="400"
+              step="8"
+              value="220"
+            />
+          </div>
+        </div>
+        <div class="desc-text" id="modeDesc" style="text-align: center; margin-bottom: 10px">
+          CPOL=0, CPHA=0 &mdash; clock idles low, data sampled on the rising
+          edge.
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="busCanvas"></canvas>
+        </div>
+        <div class="legend">
+          <span
+            ><span class="swatch" style="background: var(--orange)"></span>CS
+            (LOW = asserted)</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--dim)"></span
+            >SCK</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--cyan)"></span
+            >COPI</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--green)"></span
+            >CIPO</span
+          >
+        </div>
+        <div class="status-line" id="busStatus">Idle</div>
+      </div>
+
+      <!-- Right: controls -->
+      <div class="panel controls-panel">
+        <h2>Controls</h2>
+
+        <div class="control-group">
+          <button id="csBtn">Assert Chip Select</button>
+        </div>
+
+        <div class="control-group">
+          <label for="writeLenSelect">Write Length</label>
+          <select id="writeLenSelect">
+            <option value="1">1 byte</option>
+            <option value="2" selected>2 bytes</option>
+            <option value="3">3 bytes</option>
+            <option value="4">4 bytes</option>
+          </select>
+          <div class="byte-row" style="margin-top: 8px">
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte0" maxlength="2" value="C1" />
+            </div>
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte1" maxlength="2" value="A5" />
+            </div>
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte2" maxlength="2" value="00" />
+            </div>
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte3" maxlength="2" value="00" />
+            </div>
+          </div>
+          <button id="writeBtn">Write</button>
+        </div>
+
+        <div class="control-group">
+          <label>Read Length: <span id="readLenVal">2</span> bytes</label>
+          <input
+            type="range"
+            id="readLenRange"
+            min="1"
+            max="4"
+            step="1"
+            value="2"
+          />
+          <button id="readBtn" style="margin-top: 8px">Read</button>
+        </div>
+
+        <div class="control-group">
+          <label
+            >Simulated Temp: <span id="tempVal">25.00</span> &deg;C</label
+          >
+          <input
+            type="number"
+            id="tempOverrideInput"
+            step="0.01"
+            min="-40"
+            max="125"
+            value="25.00"
+          />
+          <div class="checkbox-row">
+            <input type="checkbox" id="tempOverrideCheck" />
+            <label for="tempOverrideCheck" style="margin: 0"
+              >Override (freeze at this value)</label
+            >
+          </div>
+        </div>
+
+        <button id="resetBtn">Reset View</button>
+      </div>
+    </div>
+
+    <div class="how-it-works">
+      <div class="label">How it works</div>
+      Assert CS, then Write [0xC1, 0xA5] (command 0xC1 = read-back, address
+      0xA5) &mdash; the sensor recognizes this exact 2-byte sequence and
+      arms itself. While CS stays asserted, pressing Read then clocks out
+      the 2-byte temperature on CIPO (signed 16-bit, 0.01&deg;C per LSB,
+      MSB first). The sensor only answers <em>once per chip-select
+      session</em>: reading again right after returns nothing, and it
+      can't be re-armed by writing the command again either &mdash;
+      releasing and re-asserting CS resets it, so a fresh session always
+      gets a fresh answer. Any other command, or releasing CS before
+      reading, disarms the sensor too. Write and Read both work even with
+      CS released &mdash; the controller
+      still clocks bytes onto the bus, but an unselected sensor ignores
+      them completely, exactly like real hardware. The simulated
+      temperature drifts slowly on its own unless you check Override, which
+      freezes it at whatever value you type. SPI Mode controls when data is
+      sampled/shifted relative to the clock edge (CPOL/CPHA) &mdash; try
+      switching modes and watch the COPI/CIPO edges move relative to SCK.
+      Use Graph Zoom to widen individual clock edges, and watch the MCU/
+      sensor schematic above &mdash; each wire glows when it's electrically
+      HIGH, except CS, which glows when it's asserted (active-low).
+    </div>
+
+    <script>
+      // ---- DOM refs ----
+      const busCanvas = document.getElementById("busCanvas");
+      const busCtx = busCanvas.getContext("2d");
+
+      const mode0Btn = document.getElementById("mode0");
+      const mode1Btn = document.getElementById("mode1");
+      const mode2Btn = document.getElementById("mode2");
+      const mode3Btn = document.getElementById("mode3");
+      const modeDesc = document.getElementById("modeDesc");
+      const speedLowBtn = document.getElementById("speedLow");
+      const speedMediumBtn = document.getElementById("speedMedium");
+      const speedHighBtn = document.getElementById("speedHigh");
+      const csBtn = document.getElementById("csBtn");
+      const writeLenSelect = document.getElementById("writeLenSelect");
+      const byteInputs = [
+        document.getElementById("byte0"),
+        document.getElementById("byte1"),
+        document.getElementById("byte2"),
+        document.getElementById("byte3"),
+      ];
+      const writeBtn = document.getElementById("writeBtn");
+      const zoomRange = document.getElementById("zoomRange");
+      const readLenRange = document.getElementById("readLenRange");
+      const readBtn = document.getElementById("readBtn");
+      const tempOverrideInput = document.getElementById("tempOverrideInput");
+      const tempOverrideCheck = document.getElementById("tempOverrideCheck");
+      const resetBtn = document.getElementById("resetBtn");
+
+      // ---- SPI mode table: CPOL (clock idle level) / CPHA (sample edge) ----
+      const SPI_MODES = [
+        { cpol: 0, cpha: 0, desc: "CPOL=0, CPHA=0 -- clock idles low, data sampled on the rising edge." },
+        { cpol: 0, cpha: 1, desc: "CPOL=0, CPHA=1 -- clock idles low, data sampled on the falling edge." },
+        { cpol: 1, cpha: 0, desc: "CPOL=1, CPHA=0 -- clock idles high, data sampled on the falling edge." },
+        { cpol: 1, cpha: 1, desc: "CPOL=1, CPHA=1 -- clock idles high, data sampled on the rising edge." },
+      ];
+
+      // Manual: milliseconds per half clock-period (two of these = one bit)
+      // for each Clock Speed setting -- lower is faster.
+      const HALF_BIT_MS = { low: 220, medium: 90, high: 28 };
+
+      // Manual: ambient temperature drift -- every DRIFT_INTERVAL_MS, nudge
+      // the simulated reading by up to +/- DRIFT_STEP degrees, clamped to
+      // a plausible range.
+      const DRIFT_INTERVAL_MS = 450;
+      const DRIFT_STEP = 0.12;
+      const DRIFT_MIN = -10;
+      const DRIFT_MAX = 60;
+
+      const DEFAULTS = {
+        spiMode: 0,
+        speed: speedLowBtn.classList.contains("active")
+          ? "low"
+          : speedHighBtn.classList.contains("active")
+            ? "high"
+            : "medium",
+        writeLength: parseInt(writeLenSelect.value, 10),
+        writeBytes: byteInputs.map((el) => parseInt(el.value, 16) || 0),
+        readLength: parseInt(readLenRange.value, 10),
+        zoomSteps: parseInt(zoomRange.value, 10),
+        tempOverride: tempOverrideCheck.checked,
+        tempOverrideValue: parseFloat(tempOverrideInput.value),
+      };
+
+      const state = {
+        spiMode: DEFAULTS.spiMode,
+        speed: DEFAULTS.speed,
+        csAsserted: false,
+        writeLength: DEFAULTS.writeLength,
+        writeBytes: DEFAULTS.writeBytes.slice(),
+        readLength: DEFAULTS.readLength,
+        zoomSteps: DEFAULTS.zoomSteps,
+        tempOverride: DEFAULTS.tempOverride,
+        tempOverrideValue: DEFAULTS.tempOverrideValue,
+      };
+
+      const sensor = {
+        armed: false,
+        everResponded: false, // the sensor only answers once per
+        // chip-select session -- once it has, no later Write can re-arm
+        // it until CS is released and re-asserted.
+        lastCmd: null,
+        lastAddr: null,
+        simTemp: 25.0,
+        driftAcc: 0,
+      };
+
+      const bus = {
+        queue: [], // half-steps waiting to be played into history
+        lastCopi: 0,
+        lastCipo: 0,
+        stepAcc: 0,
+        lastWriteBytes: null,
+        lastReadBytes: null,
+        lastReadValid: false, // false = the last Read got no real response
+        lastDecodedTemp: null,
+      };
+
+      const sim = {
+        tickIndex: 0,
+        history: [], // { tick, cs, sck, copi, cipo }
+        byteLabels: [], // { startTick, copi, cipo } -- one per byte, for the hex annotations on the graph
+        bitLabels: [], // { startTick, copi, cipo } -- one per bit, for the 0/1 annotations on the graph
+      };
+
+      function resetSim() {
+        sim.tickIndex = 0;
+        sim.history = [];
+        sim.byteLabels = [];
+        sim.bitLabels = [];
+        bus.queue = [];
+        bus.lastCopi = 0;
+        bus.lastCipo = 0;
+        bus.stepAcc = 0;
+        bus.lastWriteBytes = null;
+        bus.lastReadBytes = null;
+        bus.lastReadValid = false;
+        bus.lastDecodedTemp = null;
+      }
+
+      function toHexByte(n) {
+        return n.toString(16).toUpperCase().padStart(2, "0");
+      }
+
+      function bytesToHexList(bytes) {
+        return bytes.map((b) => "0x" + toHexByte(b)).join(", ");
+      }
+
+      // ---- Temperature encode/decode: signed 16-bit, 0.01C/LSB, MSB first
+      function encodeTempSigned16(celsius) {
+        let raw = Math.round(celsius * 100);
+        raw = Math.max(-32768, Math.min(32767, raw));
+        if (raw < 0) raw += 65536;
+        return { msb: (raw >> 8) & 0xff, lsb: raw & 0xff };
+      }
+
+      function decodeTempSigned16(msb, lsb) {
+        let raw = ((msb << 8) | lsb) & 0xffff;
+        if (raw & 0x8000) raw -= 0x10000;
+        return raw / 100;
+      }
+
+      function currentTemp() {
+        return state.tempOverride ? state.tempOverrideValue : sensor.simTemp;
+      }
+
+      // ---- Builds the half-step (SCK/COPI/CIPO) waveform for a transfer.
+      // Two half-steps per bit, MSB first, continuous clocking across every
+      // byte in the transfer -- exactly one full SCK pulse per bit.
+      function buildTransferQueue(copiBytes, cipoBytes, spiMode) {
+        const { cpol, cpha } = SPI_MODES[spiMode];
+        const idle = cpol;
+        const active = idle ? 0 : 1;
+        const queue = [];
+        let prevCopiBit = 0;
+        let prevCipoBit = 0;
+        for (let i = 0; i < copiBytes.length; i++) {
+          for (let bit = 7; bit >= 0; bit--) {
+            const copiBit = (copiBytes[i] >> bit) & 1;
+            const cipoBit = (cipoBytes[i] >> bit) & 1;
+            let step0, step1;
+            if (cpha === 0) {
+              // Data is stable for the whole bit period; the leading edge
+              // (idle->active) is the sample edge.
+              step0 = { sck: idle, copi: copiBit, cipo: cipoBit };
+              step1 = { sck: active, copi: copiBit, cipo: cipoBit };
+            } else {
+              // Data changes on the leading edge, sampled on the trailing
+              // edge -- so half0 still shows the previous bit's value.
+              step0 = { sck: idle, copi: prevCopiBit, cipo: prevCipoBit };
+              step1 = { sck: active, copi: copiBit, cipo: cipoBit };
+            }
+            // Tag every bit's first half-step with that bit's own 0/1
+            // value, and (on bit 7) the whole byte's value too -- so the
+            // graph can label both once they're played, instead of having
+            // to reconstruct them back out of raw samples.
+            step0.bitStart = true;
+            step0.copiBit = copiBit;
+            step0.cipoBit = cipoBit;
+            if (bit === 7) {
+              step0.byteStart = true;
+              step0.copiByte = copiBytes[i];
+              step0.cipoByte = cipoBytes[i];
+            }
+            queue.push(step0, step1);
+            prevCopiBit = copiBit;
+            prevCipoBit = cipoBit;
+          }
+        }
+        return queue;
+      }
+
+      // ---- Write / Read actions ----
+      // The controller can always clock a transfer out, CS or no CS -- the
+      // wire still carries whatever bits were sent. What CS actually gates
+      // is whether the *sensor* pays any attention: it only updates its
+      // armed/command state, or drives real data back on CIPO, while CS is
+      // asserted. With CS released it "does nothing" -- its internal state
+      // is left completely untouched, exactly as an unselected chip would.
+      function doWrite() {
+        if (bus.queue.length) return;
+        const bytes = state.writeBytes.slice(0, state.writeLength);
+        bus.lastWriteBytes = bytes;
+        if (state.csAsserted) {
+          sensor.lastCmd = bytes[0] ?? null;
+          sensor.lastAddr = bytes[1] ?? null;
+          // Once the sensor has responded, no later command re-arms it
+          // until CS is released and re-asserted (see toggleCS).
+          sensor.armed =
+            !sensor.everResponded &&
+            state.writeLength === 2 &&
+            bytes[0] === 0xc1 &&
+            bytes[1] === 0xa5;
+        }
+        const cipoBytes = bytes.map(() => 0x00);
+        bus.queue.push(...buildTransferQueue(bytes, cipoBytes, state.spiMode));
+        updateStatusUI();
+      }
+
+      function doRead() {
+        if (bus.queue.length) return;
+        const n = state.readLength;
+        const copiBytes = new Array(n).fill(0x00);
+        let cipoBytes;
+        const responds = state.csAsserted && sensor.armed;
+        if (responds) {
+          const { msb, lsb } = encodeTempSigned16(currentTemp());
+          cipoBytes = [msb, lsb, ...new Array(Math.max(0, n - 2)).fill(0)].slice(0, n);
+          bus.lastDecodedTemp = decodeTempSigned16(msb, lsb);
+          sensor.everResponded = true;
+        } else {
+          cipoBytes = new Array(n).fill(0x00);
+          bus.lastDecodedTemp = null; // a second read (or an unselected
+          // read) must not keep showing the previous reading as if it
+          // were still valid.
+        }
+        // A read only consumes the armed state if the sensor was actually
+        // selected -- with CS released, it never even saw the request.
+        if (state.csAsserted) sensor.armed = false;
+        bus.lastReadBytes = cipoBytes;
+        bus.lastReadValid = responds;
+        bus.queue.push(...buildTransferQueue(copiBytes, cipoBytes, state.spiMode));
+        updateStatusUI();
+      }
+
+      function toggleCS() {
+        if (bus.queue.length) return; // don't yank CS mid-transfer
+        state.csAsserted = !state.csAsserted;
+        if (!state.csAsserted) {
+          // Releasing CS fully resets the sensor's transaction state --
+          // it only ever answers once *per chip-select session*, but a
+          // fresh assert always gets a fresh chance.
+          sensor.armed = false;
+          sensor.everResponded = false;
+          sensor.lastCmd = null;
+          sensor.lastAddr = null;
+          bus.lastCopi = 0;
+          bus.lastCipo = 0;
+        }
+        updateStatusUI();
+      }
+
+      // ---- UI sync ----
+      function updateByteFieldVisibility() {
+        byteInputs.forEach((el, i) => {
+          el.parentElement.classList.toggle("inactive", i >= state.writeLength);
+        });
+      }
+
+      function updateButtonAvailability() {
+        const busy = bus.queue.length > 0;
+        csBtn.disabled = busy;
+        // Write/Read work with CS released too -- the controller still
+        // clocks the bytes out, the sensor just ignores them.
+        writeBtn.disabled = busy;
+        readBtn.disabled = busy;
+        csBtn.classList.toggle("asserted", state.csAsserted);
+        csBtn.textContent = state.csAsserted
+          ? "Release Chip Select"
+          : "Assert Chip Select";
+      }
+
+      function updateStatusUI() {
+        document.getElementById("mSpiMode").textContent = state.spiMode;
+        document.getElementById("mLastWrite").textContent = bus.lastWriteBytes
+          ? bytesToHexList(bus.lastWriteBytes)
+          : "--";
+        document.getElementById("mLastRead").textContent = bus.lastReadBytes
+          ? bytesToHexList(bus.lastReadBytes) +
+            (bus.lastReadValid ? "" : " (no response)")
+          : "--";
+        document.getElementById("mDecodedTemp").textContent =
+          bus.lastDecodedTemp === null
+            ? "--"
+            : bus.lastDecodedTemp.toFixed(2) + " °C";
+        document.getElementById("mSimTemp").textContent =
+          currentTemp().toFixed(2) + " °C";
+
+        let statusText;
+        if (!state.csAsserted) {
+          statusText = "Idle (CS released)";
+        } else if (bus.queue.length) {
+          statusText = "Clocking...";
+        } else if (sensor.armed) {
+          statusText = "Armed — ready to respond to Read";
+        } else if (sensor.everResponded) {
+          statusText =
+            "Already responded this session — release and re-assert CS to reset";
+        } else if (sensor.lastCmd !== null) {
+          statusText =
+            "Received 0x" +
+            toHexByte(sensor.lastCmd) +
+            " — not the recognized command";
+        } else {
+          statusText = "Selected, waiting for command";
+        }
+        document.getElementById("sensorStatus").textContent = statusText;
+        document.getElementById("busStatus").textContent = bus.queue.length
+          ? "Clocking..."
+          : "Idle";
+
+        updateButtonAvailability();
+      }
+
+      // ---- Simulation tick / temperature drift ----
+      function stepDrift(dtMs) {
+        if (state.tempOverride) return;
+        sensor.driftAcc += dtMs;
+        while (sensor.driftAcc >= DRIFT_INTERVAL_MS) {
+          sensor.driftAcc -= DRIFT_INTERVAL_MS;
+          sensor.simTemp += (Math.random() * 2 - 1) * DRIFT_STEP;
+          sensor.simTemp = Math.max(DRIFT_MIN, Math.min(DRIFT_MAX, sensor.simTemp));
+        }
+      }
+
+      function pushSample(step) {
+        sim.tickIndex++;
+        let sample;
+        if (step) {
+          bus.lastCopi = step.copi;
+          bus.lastCipo = step.cipo;
+          sample = {
+            tick: sim.tickIndex,
+            cs: state.csAsserted ? 0 : 1,
+            sck: step.sck,
+            copi: step.copi,
+            cipo: step.cipo,
+          };
+          if (step.bitStart) {
+            sim.bitLabels.push({
+              startTick: sim.tickIndex,
+              copi: step.copiBit,
+              cipo: step.cipoBit,
+            });
+          }
+          if (step.byteStart) {
+            sim.byteLabels.push({
+              startTick: sim.tickIndex,
+              copi: step.copiByte,
+              cipo: step.cipoByte,
+            });
+          }
+        } else {
+          const idleSck = SPI_MODES[state.spiMode].cpol;
+          sample = {
+            tick: sim.tickIndex,
+            cs: state.csAsserted ? 0 : 1,
+            sck: idleSck,
+            copi: bus.lastCopi,
+            cipo: bus.lastCipo,
+          };
+        }
+        sim.history.push(sample);
+        return sample;
+      }
+
+      // ---- Canvas setup ----
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = busCanvas.parentElement.getBoundingClientRect();
+        busCanvas.width = Math.round(rect.width * dpr);
+        busCanvas.height = Math.round(rect.height * dpr);
+        busCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function drawGrid(w, h, padL, padR, padT, padB, cols) {
+        busCtx.strokeStyle = "#16203a";
+        busCtx.lineWidth = 1;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+        for (let i = 0; i <= cols; i++) {
+          const x = padL + (gw / cols) * i;
+          busCtx.beginPath();
+          busCtx.moveTo(x, padT);
+          busCtx.lineTo(x, padT + gh);
+          busCtx.stroke();
+        }
+        busCtx.strokeStyle = "#3a4468";
+        busCtx.lineWidth = 1.5;
+        busCtx.beginPath();
+        busCtx.moveTo(padL, padT);
+        busCtx.lineTo(padL, padT + gh);
+        busCtx.lineTo(padL + gw, padT + gh);
+        busCtx.stroke();
+      }
+
+      function drawStepTrace(padL, gw, cutoff, span, valueFn, yFn, color) {
+        busCtx.strokeStyle = color;
+        busCtx.lineWidth = 2;
+        busCtx.shadowBlur = 5;
+        busCtx.shadowColor = color;
+        busCtx.beginPath();
+        let first = true;
+        let prevVal = null;
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const x = padL + gw * ((s.tick - cutoff) / span);
+          const val = valueFn(s);
+          const y = yFn(val);
+          if (first) {
+            busCtx.moveTo(x, y);
+            first = false;
+          } else if (prevVal !== val) {
+            busCtx.lineTo(x, yFn(prevVal));
+            busCtx.lineTo(x, y);
+          } else {
+            busCtx.lineTo(x, y);
+          }
+          prevVal = val;
+        }
+        if (!first) busCtx.lineTo(padL + gw, yFn(prevVal));
+        busCtx.stroke();
+        busCtx.shadowBlur = 0;
+      }
+
+      function drawBusGraph() {
+        const rect = busCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        busCtx.clearRect(0, 0, w, h);
+
+        const padL = 50;
+        const padR = 16;
+        const padT = 10;
+        const padB = 10;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(w, h, padL, padR, padT, padB, 20);
+
+        const span = state.zoomSteps;
+        const cutoff = sim.tickIndex - span;
+        const laneH = gh / 4;
+        const rootStyle = getComputedStyle(document.documentElement);
+
+        // Vertical dashed guide at the start of every byte, spanning all
+        // lanes -- makes it easy to see which bits on each lane belong to
+        // the same byte.
+        busCtx.strokeStyle = "rgba(229, 233, 245, 0.25)";
+        busCtx.lineWidth = 1;
+        busCtx.setLineDash([4, 4]);
+        for (const b of sim.byteLabels) {
+          if (b.startTick < cutoff || b.startTick > cutoff + span) continue;
+          const x = padL + gw * ((b.startTick - cutoff) / span);
+          busCtx.beginPath();
+          busCtx.moveTo(x, padT);
+          busCtx.lineTo(x, padT + gh);
+          busCtx.stroke();
+        }
+        busCtx.setLineDash([]);
+
+        const lanes = [
+          { key: "cs", label: "CS", cssVar: "--orange" },
+          { key: "sck", label: "SCK", cssVar: "--dim" },
+          { key: "copi", label: "COPI", cssVar: "--cyan" },
+          { key: "cipo", label: "CIPO", cssVar: "--green" },
+        ];
+
+        const laneY = {};
+        lanes.forEach((lane, i) => {
+          const laneTop = padT + laneH * i;
+          const highY = laneTop + laneH * 0.22;
+          const lowY = laneTop + laneH * 0.82;
+          laneY[lane.key] = { laneTop, highY, lowY };
+          const color = rootStyle.getPropertyValue(lane.cssVar).trim();
+
+          drawStepTrace(
+            padL,
+            gw,
+            cutoff,
+            span,
+            (s) => s[lane.key],
+            (v) => (v ? highY : lowY),
+            color,
+          );
+
+          busCtx.fillStyle = color;
+          busCtx.font = "11px monospace";
+          busCtx.fillText(lane.label, 4, highY + 4);
+        });
+
+        // Hex byte labels on COPI/CIPO -- one per completed byte, skipped
+        // when too zoomed out for the text to fit without overlapping.
+        const pxPerByte = (gw / span) * 16;
+        if (pxPerByte > 26) {
+          const cyanColor = rootStyle.getPropertyValue("--cyan").trim();
+          const greenColor = rootStyle.getPropertyValue("--green").trim();
+          busCtx.font = "10px monospace";
+          for (const b of sim.byteLabels) {
+            const centerTick = b.startTick + 7.5;
+            if (centerTick < cutoff || centerTick > cutoff + span) continue;
+            const x = padL + gw * ((centerTick - cutoff) / span);
+            // Anchored in each lane's top margin (above its "high" trace
+            // level) rather than below the trace -- CIPO is the bottom
+            // lane, and text below it would spill past the canvas edge.
+            busCtx.fillStyle = cyanColor;
+            busCtx.textAlign = "center";
+            busCtx.fillText(
+              "0x" + toHexByte(b.copi),
+              x,
+              laneY.copi.laneTop + 11,
+            );
+            busCtx.fillStyle = greenColor;
+            busCtx.fillText(
+              "0x" + toHexByte(b.cipo),
+              x,
+              laneY.cipo.laneTop + 11,
+            );
+          }
+          busCtx.textAlign = "left";
+        }
+
+        // Per-bit 0/1 labels on COPI/CIPO -- one per bit, positioned right
+        // at that bit's own trace level (above a HIGH plateau, below a LOW
+        // one) so the digit and the signal level always agree. Needs more
+        // room per sample than the byte hex labels, so only shows up once
+        // zoomed in enough to read individual bits anyway.
+        const pxPerBit = (gw / span) * 2;
+        if (pxPerBit > 12) {
+          const bitColor = rootStyle.getPropertyValue("--text").trim();
+          busCtx.font = "9px monospace";
+          busCtx.fillStyle = bitColor;
+          busCtx.textAlign = "center";
+          for (const b of sim.bitLabels) {
+            const centerTick = b.startTick + 1;
+            if (centerTick < cutoff || centerTick > cutoff + span) continue;
+            const x = padL + gw * ((centerTick - cutoff) / span);
+            busCtx.fillText(
+              String(b.copi),
+              x,
+              b.copi ? laneY.copi.highY - 4 : laneY.copi.lowY + 11,
+            );
+            busCtx.fillText(
+              String(b.cipo),
+              x,
+              b.cipo ? laneY.cipo.highY - 4 : laneY.cipo.lowY + 11,
+            );
+          }
+          busCtx.textAlign = "left";
+        }
+      }
+
+      // ---- Main loop ----
+      let lastTs = null;
+
+      function draw(ts) {
+        if (lastTs === null) lastTs = ts;
+        let dt = ts - lastTs;
+        lastTs = ts;
+        dt = Math.min(dt, 100); // clamp jumps from a backgrounded tab
+
+        stepDrift(dt);
+
+        bus.stepAcc += dt;
+        const halfStepMs = HALF_BIT_MS[state.speed];
+        let advanced = false;
+        while (bus.stepAcc >= halfStepMs) {
+          bus.stepAcc -= halfStepMs;
+          const step = bus.queue.length ? bus.queue.shift() : null;
+          pushSample(step);
+          advanced = true;
+        }
+
+        if (advanced) {
+          // Keep a bit of slack (2x zoom) beyond what's currently visible so
+          // zooming out doesn't instantly reveal a truncated trace.
+          const cutoff = sim.tickIndex - state.zoomSteps * 2;
+          while (sim.history.length && sim.history[0].tick < cutoff) {
+            sim.history.shift();
+          }
+          while (sim.byteLabels.length && sim.byteLabels[0].startTick < cutoff) {
+            sim.byteLabels.shift();
+          }
+          while (sim.bitLabels.length && sim.bitLabels[0].startTick < cutoff) {
+            sim.bitLabels.shift();
+          }
+          if (bus.queue.length === 0) updateButtonAvailability();
+        }
+
+        drawBusGraph();
+        updateSchematic();
+        document.getElementById("mSimTemp").textContent =
+          currentTemp().toFixed(2) + " °C";
+
+        requestAnimationFrame(draw);
+      }
+
+      // Drives the MCU<->Sensor schematic wires: COPI/CIPO/SCK glow when
+      // electrically HIGH, but CS glows on logical assertion (it's
+      // active-low on the wire, so "enabled" and "HIGH" are opposites).
+      function updateSchematic() {
+        const last = sim.history[sim.history.length - 1];
+        const copi = last ? last.copi : 0;
+        const cipo = last ? last.cipo : 0;
+        const sck = last ? last.sck : SPI_MODES[state.spiMode].cpol;
+
+        document.getElementById("wireCopi").classList.toggle("lit", copi === 1);
+        document.getElementById("wireCipo").classList.toggle("lit", cipo === 1);
+        document.getElementById("wireSck").classList.toggle("lit", sck === 1);
+        document
+          .getElementById("wireCs")
+          .classList.toggle("lit", state.csAsserted);
+      }
+
+      // ---- Event wiring ----
+      function setSpiMode(mode) {
+        state.spiMode = mode;
+        [mode0Btn, mode1Btn, mode2Btn, mode3Btn].forEach((btn, i) =>
+          btn.classList.toggle("active", i === mode),
+        );
+        modeDesc.textContent = SPI_MODES[mode].desc;
+        updateStatusUI();
+      }
+      mode0Btn.addEventListener("click", () => setSpiMode(0));
+      mode1Btn.addEventListener("click", () => setSpiMode(1));
+      mode2Btn.addEventListener("click", () => setSpiMode(2));
+      mode3Btn.addEventListener("click", () => setSpiMode(3));
+
+      function setSpeed(speed) {
+        state.speed = speed;
+        speedLowBtn.classList.toggle("active", speed === "low");
+        speedMediumBtn.classList.toggle("active", speed === "medium");
+        speedHighBtn.classList.toggle("active", speed === "high");
+      }
+      speedLowBtn.addEventListener("click", () => setSpeed("low"));
+      speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
+      speedHighBtn.addEventListener("click", () => setSpeed("high"));
+
+      csBtn.addEventListener("click", toggleCS);
+      writeBtn.addEventListener("click", doWrite);
+      readBtn.addEventListener("click", doRead);
+
+      writeLenSelect.addEventListener("change", (e) => {
+        state.writeLength = parseInt(e.target.value, 10);
+        updateByteFieldVisibility();
+      });
+
+      byteInputs.forEach((el, i) => {
+        el.addEventListener("input", () => {
+          const cleaned = el.value.replace(/[^0-9a-fA-F]/g, "").slice(0, 2);
+          el.value = cleaned;
+          state.writeBytes[i] = parseInt(cleaned, 16) || 0;
+        });
+      });
+
+      readLenRange.addEventListener("input", (e) => {
+        state.readLength = parseInt(e.target.value, 10);
+        document.getElementById("readLenVal").textContent = state.readLength;
+      });
+
+      zoomRange.addEventListener("input", (e) => {
+        state.zoomSteps = parseInt(e.target.value, 10);
+        document.getElementById("zoomVal").textContent = state.zoomSteps;
+      });
+
+      tempOverrideInput.addEventListener("input", (e) => {
+        const v = parseFloat(e.target.value);
+        state.tempOverrideValue = Number.isNaN(v) ? 0 : v;
+        document.getElementById("tempVal").textContent =
+          state.tempOverrideValue.toFixed(2);
+      });
+
+      tempOverrideCheck.addEventListener("change", (e) => {
+        state.tempOverride = e.target.checked;
+        if (state.tempOverride) sensor.simTemp = state.tempOverrideValue;
+      });
+
+      resetBtn.addEventListener("click", () => {
+        state.spiMode = DEFAULTS.spiMode;
+        state.speed = DEFAULTS.speed;
+        state.csAsserted = false;
+        state.writeLength = DEFAULTS.writeLength;
+        state.writeBytes = DEFAULTS.writeBytes.slice();
+        state.readLength = DEFAULTS.readLength;
+        state.zoomSteps = DEFAULTS.zoomSteps;
+        state.tempOverride = DEFAULTS.tempOverride;
+        state.tempOverrideValue = DEFAULTS.tempOverrideValue;
+
+        sensor.armed = false;
+        sensor.everResponded = false;
+        sensor.lastCmd = null;
+        sensor.lastAddr = null;
+        sensor.simTemp = 25.0;
+        sensor.driftAcc = 0;
+
+        resetSim();
+        syncControlsFromState();
+        setSpiMode(DEFAULTS.spiMode);
+        setSpeed(DEFAULTS.speed);
+        updateByteFieldVisibility();
+        updateStatusUI();
+      });
+
+      // Drive every input's on-screen value from state at load time instead
+      // of trusting the HTML's static value="" attributes alone to match.
+      function syncControlsFromState() {
+        writeLenSelect.value = String(state.writeLength);
+        byteInputs.forEach((el, i) => (el.value = toHexByte(state.writeBytes[i])));
+        readLenRange.value = state.readLength;
+        document.getElementById("readLenVal").textContent = state.readLength;
+        zoomRange.value = state.zoomSteps;
+        document.getElementById("zoomVal").textContent = state.zoomSteps;
+        tempOverrideCheck.checked = state.tempOverride;
+        tempOverrideInput.value = state.tempOverrideValue.toFixed(2);
+        document.getElementById("tempVal").textContent =
+          state.tempOverrideValue.toFixed(2);
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      syncControlsFromState();
+      setSpiMode(DEFAULTS.spiMode);
+      setSpeed(DEFAULTS.speed);
+      updateByteFieldVisibility();
+      updateStatusUI();
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>
