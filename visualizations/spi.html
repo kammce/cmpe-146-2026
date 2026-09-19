@@ -88,7 +88,7 @@
         margin-top: 3px;
       }
 
-      /* MCU <-> Sensor schematic */
+      /* MCU <-> peripheral schematic */
       .schematic-panel {
         max-width: 1560px;
         margin: 0 auto 18px;
@@ -96,7 +96,7 @@
 
       .schematic {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         gap: 24px;
       }
 
@@ -107,6 +107,14 @@
         border-radius: 10px;
         padding: 16px 10px;
         text-align: center;
+        transition:
+          border-color 0.15s linear,
+          box-shadow 0.15s linear;
+      }
+
+      .chip-box.active {
+        border-color: var(--cyan);
+        box-shadow: 0 0 10px 1px rgba(34, 211, 238, 0.35);
       }
 
       .chip-box .chip-title {
@@ -121,11 +129,24 @@
         margin-top: 4px;
       }
 
+      .chip-stack {
+        flex: 0 0 170px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .chip-stack .chip-box {
+        flex: 1;
+      }
+
       .wire-group {
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        justify-content: space-around;
+        gap: 14px;
         padding: 6px 0;
       }
 
@@ -156,6 +177,35 @@
 
       .wire-track.lit .wire-tag {
         color: currentColor;
+      }
+
+      .led-strip {
+        display: flex;
+        gap: 3px;
+        justify-content: center;
+        margin-top: 8px;
+      }
+
+      .led {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        background: #232b47;
+        border: 1px solid #333e5e;
+        transition:
+          background-color 0.1s linear,
+          box-shadow 0.1s linear;
+      }
+
+      .led.on {
+        background: var(--red);
+        border-color: var(--red);
+        box-shadow: 0 0 5px 1px var(--red);
+      }
+
+      .led-strip.small .led {
+        width: 8px;
+        height: 8px;
       }
 
       .metric {
@@ -199,7 +249,7 @@
       .canvas-wrap {
         position: relative;
         width: 100%;
-        height: 300px;
+        height: 340px;
       }
 
       canvas {
@@ -377,6 +427,14 @@
         font-weight: bold;
       }
 
+      #toggleBitBtn {
+        width: 100%;
+        background: linear-gradient(135deg, #fb923c, #f87171);
+        border: none;
+        color: #2a1400;
+        font-weight: bold;
+      }
+
       .checkbox-row {
         display: flex;
         align-items: center;
@@ -413,6 +471,18 @@
         margin-bottom: 4px;
       }
 
+      .how-it-works p {
+        margin: 0 0 10px;
+      }
+
+      .how-it-works p:last-child {
+        margin-bottom: 0;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
       @media (max-width: 1050px) {
         .layout {
           grid-template-columns: 1fr;
@@ -423,8 +493,8 @@
   <body>
     <h1>SPI Bus Visualizer</h1>
     <div class="subtitle">
-      Controller &harr; Temperature Sensor &mdash; write/read transactions on
-      a logic-analyzer style trace
+      Controller &harr; two devices sharing one SPI bus &mdash; write/read
+      transactions on a logic-analyzer style trace
     </div>
 
     <div class="panel schematic-panel">
@@ -435,21 +505,31 @@
         </div>
         <div class="wire-group">
           <div class="wire-track" id="wireCopi" style="color: var(--cyan)">
-            <span class="wire-tag">COPI &rarr;</span>
+            <span class="wire-tag">COPI &rarr; (shared)</span>
           </div>
           <div class="wire-track" id="wireCipo" style="color: var(--green)">
-            <span class="wire-tag">&larr; CIPO</span>
+            <span class="wire-tag">&larr; CIPO (shared)</span>
           </div>
           <div class="wire-track" id="wireSck" style="color: var(--dim)">
-            <span class="wire-tag">SCK &rarr;</span>
+            <span class="wire-tag">SCK &rarr; (shared)</span>
           </div>
-          <div class="wire-track" id="wireCs" style="color: var(--orange)">
-            <span class="wire-tag">CS &rarr; (glows when asserted)</span>
+          <div class="wire-track" id="wireCsTemp" style="color: var(--orange)">
+            <span class="wire-tag">CS &rarr; Temp Sensor</span>
+          </div>
+          <div class="wire-track" id="wireCsGpio" style="color: var(--red)">
+            <span class="wire-tag">CS &rarr; GPIO Expander</span>
           </div>
         </div>
-        <div class="chip-box">
-          <div class="chip-title">Temp Sensor</div>
-          <div class="chip-sub">cmd 0xC1 / addr 0xA5</div>
+        <div class="chip-stack">
+          <div class="chip-box" id="chipTemp">
+            <div class="chip-title">Temp Sensor</div>
+            <div class="chip-sub">cmd 0xC1 / addr 0xA5</div>
+          </div>
+          <div class="chip-box" id="chipGpio">
+            <div class="chip-title">GPIO Expander</div>
+            <div class="chip-sub">cmd 0x50 write / 0x51 read</div>
+            <div class="led-strip small" id="schematicLeds"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -460,7 +540,7 @@
         <h2>Devices</h2>
         <div class="device-box">
           <div class="device-title">Controller</div>
-          <div class="device-sub">Drives SCK, COPI, and CS</div>
+          <div class="device-sub">Drives SCK, COPI, and both CS lines</div>
         </div>
 
         <div class="device-box">
@@ -468,6 +548,14 @@
           <div class="device-sub" id="sensorStatus">
             Idle (CS released)
           </div>
+        </div>
+
+        <div class="device-box">
+          <div class="device-title">GPIO Expander</div>
+          <div class="device-sub" id="gpioStatus">
+            Not selected (CS high, ignoring bus)
+          </div>
+          <div class="led-strip" id="gpioLeds"></div>
         </div>
 
         <h2 style="margin-top: 4px">Status</h2>
@@ -480,15 +568,25 @@
         <div class="metric">
           <span>Last Read</span><span class="val" id="mLastRead">--</span>
         </div>
-        <div class="metric" style="border-left-color: var(--green)">
-          <span>Last Decoded Temp</span
-          ><span class="val" id="mDecodedTemp" style="color: var(--green)"
-            >--</span
-          >
+        <div class="device-only-temp">
+          <div class="metric" style="border-left-color: var(--green)">
+            <span>Last Decoded Temp</span
+            ><span class="val" id="mDecodedTemp" style="color: var(--green)"
+              >--</span
+            >
+          </div>
+          <div class="metric">
+            <span>Simulated Temp</span
+            ><span class="val" id="mSimTemp">25.00 &deg;C</span>
+          </div>
         </div>
-        <div class="metric">
-          <span>Simulated Temp</span
-          ><span class="val" id="mSimTemp">25.00 &deg;C</span>
+        <div class="device-only-gpio">
+          <div class="metric" style="border-left-color: var(--red)">
+            <span>GPIO Output Reg</span
+            ><span class="val" id="mGpioOut" style="color: var(--red)"
+              >0x00</span
+            >
+          </div>
         </div>
       </div>
 
@@ -539,7 +637,11 @@
         <div class="legend">
           <span
             ><span class="swatch" style="background: var(--orange)"></span>CS
-            (LOW = asserted)</span
+            Temp (LOW = asserted)</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--red)"></span>CS
+            GPIO (LOW = asserted)</span
           >
           <span
             ><span class="swatch" style="background: var(--dim)"></span
@@ -560,6 +662,14 @@
       <!-- Right: controls -->
       <div class="panel controls-panel">
         <h2>Controls</h2>
+
+        <div class="control-group">
+          <label>Target Device</label>
+          <div class="segmented">
+            <button id="deviceTempBtn" class="active">Temp Sensor</button>
+            <button id="deviceGpioBtn">GPIO Expander</button>
+          </div>
+        </div>
 
         <div class="control-group">
           <button id="csBtn">Assert Chip Select</button>
@@ -607,7 +717,7 @@
           <button id="readBtn" style="margin-top: 8px">Read</button>
         </div>
 
-        <div class="control-group">
+        <div class="control-group device-only-temp">
           <label
             >Simulated Temp: <span id="tempVal">25.00</span> &deg;C</label
           >
@@ -627,32 +737,71 @@
           </div>
         </div>
 
+        <div class="control-group device-only-gpio">
+          <label for="bitSelect">Read-Modify-Write a Single Bit</label>
+          <select id="bitSelect">
+            <option value="0">bit 0 (LSB)</option>
+            <option value="1">bit 1</option>
+            <option value="2">bit 2</option>
+            <option value="3">bit 3</option>
+            <option value="4">bit 4</option>
+            <option value="5">bit 5</option>
+            <option value="6">bit 6</option>
+            <option value="7">bit 7 (MSB)</option>
+          </select>
+          <button id="toggleBitBtn" style="margin-top: 8px">
+            Toggle Bit (Read &rarr; Modify &rarr; Write)
+          </button>
+        </div>
+
         <button id="resetBtn">Reset View</button>
       </div>
     </div>
 
     <div class="how-it-works">
       <div class="label">How it works</div>
-      Assert CS, then Write [0xC1, 0xA5] (command 0xC1 = read-back, address
-      0xA5) &mdash; the sensor recognizes this exact 2-byte sequence and
-      arms itself. While CS stays asserted, pressing Read then clocks out
-      the 2-byte temperature on CIPO (signed 16-bit, 0.01&deg;C per LSB,
-      MSB first). The sensor only answers <em>once per chip-select
-      session</em>: reading again right after returns nothing, and it
-      can't be re-armed by writing the command again either &mdash;
-      releasing and re-asserting CS resets it, so a fresh session always
-      gets a fresh answer. Any other command, or releasing CS before
-      reading, disarms the sensor too. Write and Read both work even with
-      CS released &mdash; the controller
-      still clocks bytes onto the bus, but an unselected sensor ignores
-      them completely, exactly like real hardware. The simulated
-      temperature drifts slowly on its own unless you check Override, which
-      freezes it at whatever value you type. SPI Mode controls when data is
-      sampled/shifted relative to the clock edge (CPOL/CPHA) &mdash; try
-      switching modes and watch the COPI/CIPO edges move relative to SCK.
-      Use Graph Zoom to widen individual clock edges, and watch the MCU/
-      sensor schematic above &mdash; each wire glows when it's electrically
-      HIGH, except CS, which glows when it's asserted (active-low).
+      <p>
+        <strong>Shared bus, two chip selects.</strong> Both devices sit on
+        the same SCK, COPI, and CIPO wires, but each has its own CS line
+        (the schematic above shows both). Only one CS is ever asserted at a
+        time &mdash; that's what "Target Device" picks &mdash; and the
+        controller can't switch devices while a CS is held low. An
+        unselected device sees the same SCK/COPI clocking as everyone else,
+        but ignores it completely and never drives CIPO, exactly like real
+        multi-drop SPI.
+      </p>
+      <p>
+        <strong>Temp Sensor.</strong> Assert its CS, then Write [0xC1, 0xA5]
+        (command 0xC1 = read-back, address 0xA5) &mdash; the sensor
+        recognizes this exact 2-byte sequence and arms itself. While CS
+        stays asserted, pressing Read then clocks out the 2-byte
+        temperature on CIPO (signed 16-bit, 0.01&deg;C per LSB, MSB first).
+        The sensor only answers <em>once per chip-select session</em>:
+        reading again returns nothing, and re-arming needs a fresh
+        release/re-assert of its CS. The simulated temperature drifts
+        slowly on its own unless you check Override.
+      </p>
+      <p>
+        <strong>GPIO Expander.</strong> A much simpler device: an 8-bit
+        output register that persists forever (it does <em>not</em> reset
+        when its CS is released, unlike the sensor's one-shot arm state).
+        Write [0x50, value] to set all 8 outputs at once &mdash; watch the
+        LEDs on its chip and in the devices panel update immediately. Write
+        [0x51] to arm it, then Read 1 byte to shift the <em>current</em>
+        register value back out on CIPO &mdash; it can be armed and read
+        repeatedly within one CS session, no release needed. To flip just
+        one bit without disturbing the others, use "Toggle Bit": it scripts
+        the real read-modify-write sequence a driver would run &mdash; Read
+        the current output, flip one bit in software, then Write the whole
+        byte back &mdash; and you can watch all three transfers happen back
+        to back on the trace.
+      </p>
+      <p>
+        SPI Mode controls when data is sampled/shifted relative to the
+        clock edge (CPOL/CPHA) &mdash; try switching modes and watch the
+        COPI/CIPO edges move relative to SCK. Use Graph Zoom to widen
+        individual clock edges.
+      </p>
     </div>
 
     <script>
@@ -668,6 +817,8 @@
       const speedLowBtn = document.getElementById("speedLow");
       const speedMediumBtn = document.getElementById("speedMedium");
       const speedHighBtn = document.getElementById("speedHigh");
+      const deviceTempBtn = document.getElementById("deviceTempBtn");
+      const deviceGpioBtn = document.getElementById("deviceGpioBtn");
       const csBtn = document.getElementById("csBtn");
       const writeLenSelect = document.getElementById("writeLenSelect");
       const byteInputs = [
@@ -682,6 +833,8 @@
       const readBtn = document.getElementById("readBtn");
       const tempOverrideInput = document.getElementById("tempOverrideInput");
       const tempOverrideCheck = document.getElementById("tempOverrideCheck");
+      const bitSelect = document.getElementById("bitSelect");
+      const toggleBitBtn = document.getElementById("toggleBitBtn");
       const resetBtn = document.getElementById("resetBtn");
 
       // ---- SPI mode table: CPOL (clock idle level) / CPHA (sample edge) ----
@@ -704,6 +857,18 @@
       const DRIFT_MIN = -10;
       const DRIFT_MAX = 60;
 
+      // GPIO expander command bytes.
+      const GPIO_CMD_WRITE = 0x50; // + 1 data byte -> sets the output register immediately
+      const GPIO_CMD_READ = 0x51; // arms the device to shift the current register out on the next Read
+
+      // Per-device defaults applied to the shared Write/Read controls
+      // whenever the Target Device selector switches, so a student never
+      // accidentally sends one device's opcode to the other.
+      const DEVICE_PRESETS = {
+        temp: { writeLength: 2, writeBytes: [0xc1, 0xa5, 0x00, 0x00], readLength: 2 },
+        gpio: { writeLength: 2, writeBytes: [0x50, 0x00, 0x00, 0x00], readLength: 1 },
+      };
+
       const DEFAULTS = {
         spiMode: 0,
         speed: speedLowBtn.classList.contains("active")
@@ -711,9 +876,7 @@
           : speedHighBtn.classList.contains("active")
             ? "high"
             : "medium",
-        writeLength: parseInt(writeLenSelect.value, 10),
-        writeBytes: byteInputs.map((el) => parseInt(el.value, 16) || 0),
-        readLength: parseInt(readLenRange.value, 10),
+        selectedDevice: "temp",
         zoomSteps: parseInt(zoomRange.value, 10),
         tempOverride: tempOverrideCheck.checked,
         tempOverrideValue: parseFloat(tempOverrideInput.value),
@@ -722,10 +885,11 @@
       const state = {
         spiMode: DEFAULTS.spiMode,
         speed: DEFAULTS.speed,
+        selectedDevice: DEFAULTS.selectedDevice,
         csAsserted: false,
-        writeLength: DEFAULTS.writeLength,
-        writeBytes: DEFAULTS.writeBytes.slice(),
-        readLength: DEFAULTS.readLength,
+        writeLength: DEVICE_PRESETS.temp.writeLength,
+        writeBytes: DEVICE_PRESETS.temp.writeBytes.slice(),
+        readLength: DEVICE_PRESETS.temp.readLength,
         zoomSteps: DEFAULTS.zoomSteps,
         tempOverride: DEFAULTS.tempOverride,
         tempOverrideValue: DEFAULTS.tempOverrideValue,
@@ -742,6 +906,16 @@
         driftAcc: 0,
       };
 
+      // Unlike the sensor, the GPIO expander's output register persists
+      // across CS release/re-assert (and even across device switches) --
+      // it's a real piece of state, not a per-session transaction. Only
+      // armedRead/lastCmd reset with the CS session.
+      const gpio = {
+        outputReg: 0x00,
+        armedRead: false,
+        lastCmd: null,
+      };
+
       const bus = {
         queue: [], // half-steps waiting to be played into history
         lastCopi: 0,
@@ -753,9 +927,14 @@
         lastDecodedTemp: null,
       };
 
+      // A tiny sequencer for multi-transfer scripted actions (e.g. the
+      // GPIO "Toggle Bit" read-modify-write). Each entry runs once the bus
+      // queue has fully drained from the previous transfer.
+      const scriptQueue = [];
+
       const sim = {
         tickIndex: 0,
-        history: [], // { tick, cs, sck, copi, cipo }
+        history: [], // { tick, csTemp, csGpio, sck, copi, cipo }
         byteLabels: [], // { startTick, copi, cipo } -- one per byte, for the hex annotations on the graph
         bitLabels: [], // { startTick, copi, cipo } -- one per bit, for the 0/1 annotations on the graph
       };
@@ -773,6 +952,7 @@
         bus.lastReadBytes = null;
         bus.lastReadValid = false;
         bus.lastDecodedTemp = null;
+        scriptQueue.length = 0;
       }
 
       function toHexByte(n) {
@@ -850,15 +1030,16 @@
       // ---- Write / Read actions ----
       // The controller can always clock a transfer out, CS or no CS -- the
       // wire still carries whatever bits were sent. What CS actually gates
-      // is whether the *sensor* pays any attention: it only updates its
-      // armed/command state, or drives real data back on CIPO, while CS is
-      // asserted. With CS released it "does nothing" -- its internal state
-      // is left completely untouched, exactly as an unselected chip would.
+      // is whether the *selected device* pays any attention: it only
+      // updates its internal state, or drives real data back on CIPO,
+      // while its own CS is asserted. The other device's CS is always high
+      // during this (only one CS line can be asserted at a time), so it
+      // ignores the same bytes completely -- exactly like real hardware.
       function doWrite() {
         if (bus.queue.length) return;
         const bytes = state.writeBytes.slice(0, state.writeLength);
         bus.lastWriteBytes = bytes;
-        if (state.csAsserted) {
+        if (state.csAsserted && state.selectedDevice === "temp") {
           sensor.lastCmd = bytes[0] ?? null;
           sensor.lastAddr = bytes[1] ?? null;
           // Once the sensor has responded, no later command re-arms it
@@ -868,6 +1049,17 @@
             state.writeLength === 2 &&
             bytes[0] === 0xc1 &&
             bytes[1] === 0xa5;
+        } else if (state.csAsserted && state.selectedDevice === "gpio") {
+          const cmd = bytes[0] ?? null;
+          gpio.lastCmd = cmd;
+          if (cmd === GPIO_CMD_WRITE && state.writeLength >= 2) {
+            gpio.outputReg = bytes[1] & 0xff;
+            gpio.armedRead = false;
+          } else if (cmd === GPIO_CMD_READ) {
+            gpio.armedRead = true;
+          } else {
+            gpio.armedRead = false;
+          }
         }
         const cipoBytes = bytes.map(() => 0x00);
         bus.queue.push(...buildTransferQueue(bytes, cipoBytes, state.spiMode));
@@ -879,21 +1071,27 @@
         const n = state.readLength;
         const copiBytes = new Array(n).fill(0x00);
         let cipoBytes;
-        const responds = state.csAsserted && sensor.armed;
-        if (responds) {
-          const { msb, lsb } = encodeTempSigned16(currentTemp());
-          cipoBytes = [msb, lsb, ...new Array(Math.max(0, n - 2)).fill(0)].slice(0, n);
-          bus.lastDecodedTemp = decodeTempSigned16(msb, lsb);
-          sensor.everResponded = true;
+        let responds;
+        if (state.selectedDevice === "temp") {
+          responds = state.csAsserted && sensor.armed;
+          if (responds) {
+            const { msb, lsb } = encodeTempSigned16(currentTemp());
+            cipoBytes = [msb, lsb, ...new Array(Math.max(0, n - 2)).fill(0)].slice(0, n);
+            bus.lastDecodedTemp = decodeTempSigned16(msb, lsb);
+            sensor.everResponded = true;
+          } else {
+            cipoBytes = new Array(n).fill(0x00);
+            bus.lastDecodedTemp = null; // a second read (or an unselected
+            // read) must not keep showing the previous reading as if it
+            // were still valid.
+          }
+          if (state.csAsserted) sensor.armed = false;
         } else {
-          cipoBytes = new Array(n).fill(0x00);
-          bus.lastDecodedTemp = null; // a second read (or an unselected
-          // read) must not keep showing the previous reading as if it
-          // were still valid.
+          responds = state.csAsserted && gpio.armedRead;
+          cipoBytes = new Array(n).fill(responds ? gpio.outputReg : 0x00);
+          bus.lastDecodedTemp = null;
+          if (state.csAsserted) gpio.armedRead = false;
         }
-        // A read only consumes the armed state if the sensor was actually
-        // selected -- with CS released, it never even saw the request.
-        if (state.csAsserted) sensor.armed = false;
         bus.lastReadBytes = cipoBytes;
         bus.lastReadValid = responds;
         bus.queue.push(...buildTransferQueue(copiBytes, cipoBytes, state.spiMode));
@@ -901,20 +1099,106 @@
       }
 
       function toggleCS() {
-        if (bus.queue.length) return; // don't yank CS mid-transfer
+        if (bus.queue.length || scriptQueue.length) return; // don't yank CS mid-transfer
         state.csAsserted = !state.csAsserted;
         if (!state.csAsserted) {
-          // Releasing CS fully resets the sensor's transaction state --
-          // it only ever answers once *per chip-select session*, but a
-          // fresh assert always gets a fresh chance.
-          sensor.armed = false;
-          sensor.everResponded = false;
-          sensor.lastCmd = null;
-          sensor.lastAddr = null;
+          // Releasing CS resets the *selected* device's transaction state.
+          // The sensor only ever answers once per chip-select session, but
+          // a fresh assert always gets a fresh chance. The GPIO expander's
+          // output register is real persistent state, though -- only its
+          // in-flight read-arm/command bookkeeping resets.
+          if (state.selectedDevice === "temp") {
+            sensor.armed = false;
+            sensor.everResponded = false;
+            sensor.lastCmd = null;
+            sensor.lastAddr = null;
+          } else {
+            gpio.armedRead = false;
+            gpio.lastCmd = null;
+          }
           bus.lastCopi = 0;
           bus.lastCipo = 0;
         }
         updateStatusUI();
+      }
+
+      // ---- Device selection ----
+      function syncByteInputsFromState() {
+        byteInputs.forEach((el, i) => (el.value = toHexByte(state.writeBytes[i])));
+      }
+
+      function setSelectedDevice(device) {
+        if (state.csAsserted || bus.queue.length || scriptQueue.length) return;
+        state.selectedDevice = device;
+        deviceTempBtn.classList.toggle("active", device === "temp");
+        deviceGpioBtn.classList.toggle("active", device === "gpio");
+
+        const preset = DEVICE_PRESETS[device];
+        state.writeLength = preset.writeLength;
+        state.writeBytes = preset.writeBytes.slice();
+        state.readLength = preset.readLength;
+        writeLenSelect.value = String(state.writeLength);
+        syncByteInputsFromState();
+        readLenRange.value = state.readLength;
+        document.getElementById("readLenVal").textContent = state.readLength;
+        updateByteFieldVisibility();
+
+        document
+          .querySelectorAll(".device-only-temp")
+          .forEach((el) => el.classList.toggle("hidden", device !== "temp"));
+        document
+          .querySelectorAll(".device-only-gpio")
+          .forEach((el) => el.classList.toggle("hidden", device !== "gpio"));
+
+        updateStatusUI();
+      }
+      deviceTempBtn.addEventListener("click", () => setSelectedDevice("temp"));
+      deviceGpioBtn.addEventListener("click", () => setSelectedDevice("gpio"));
+
+      // ---- GPIO "Toggle Bit" read-modify-write sequence ----
+      // Scripts the same three transfers a real driver would issue to
+      // flip one output bit without disturbing the others: arm a Read,
+      // Read the current register, then Write the whole byte back with
+      // just that one bit flipped.
+      toggleBitBtn.addEventListener("click", () => {
+        if (
+          bus.queue.length ||
+          scriptQueue.length ||
+          state.selectedDevice !== "gpio" ||
+          !state.csAsserted
+        )
+          return;
+        const bit = parseInt(bitSelect.value, 10);
+
+        scriptQueue.push(() => {
+          state.writeLength = 1;
+          state.writeBytes[0] = GPIO_CMD_READ;
+          syncByteInputsFromState();
+          updateByteFieldVisibility();
+          doWrite();
+        });
+        scriptQueue.push(() => {
+          state.readLength = 1;
+          readLenRange.value = 1;
+          document.getElementById("readLenVal").textContent = 1;
+          doRead();
+        });
+        scriptQueue.push(() => {
+          const current = bus.lastReadBytes ? bus.lastReadBytes[0] : gpio.outputReg;
+          const updated = current ^ (1 << bit);
+          state.writeLength = 2;
+          state.writeBytes[0] = GPIO_CMD_WRITE;
+          state.writeBytes[1] = updated;
+          syncByteInputsFromState();
+          updateByteFieldVisibility();
+          doWrite();
+        });
+      });
+
+      function stepScript() {
+        if (bus.queue.length || scriptQueue.length === 0) return;
+        const fn = scriptQueue.shift();
+        fn();
       }
 
       // ---- UI sync ----
@@ -925,16 +1209,46 @@
       }
 
       function updateButtonAvailability() {
-        const busy = bus.queue.length > 0;
+        const busy = bus.queue.length > 0 || scriptQueue.length > 0;
         csBtn.disabled = busy;
         // Write/Read work with CS released too -- the controller still
-        // clocks the bytes out, the sensor just ignores them.
+        // clocks the bytes out, an unselected device just ignores them.
         writeBtn.disabled = busy;
         readBtn.disabled = busy;
+        deviceTempBtn.disabled = busy || state.csAsserted;
+        deviceGpioBtn.disabled = busy || state.csAsserted;
+        toggleBitBtn.disabled = busy || state.selectedDevice !== "gpio" || !state.csAsserted;
         csBtn.classList.toggle("asserted", state.csAsserted);
+        const deviceLabel = state.selectedDevice === "temp" ? "Temp Sensor" : "GPIO Expander";
         csBtn.textContent = state.csAsserted
-          ? "Release Chip Select"
-          : "Assert Chip Select";
+          ? "Release Chip Select (" + deviceLabel + ")"
+          : "Assert Chip Select (" + deviceLabel + ")";
+      }
+
+      function tempStatusText() {
+        const selected = state.selectedDevice === "temp";
+        if (!selected) return "Not selected (CS high, ignoring bus)";
+        if (!state.csAsserted) return "Idle (CS released)";
+        if (bus.queue.length) return "Clocking...";
+        if (sensor.armed) return "Armed — ready to respond to Read";
+        if (sensor.everResponded)
+          return "Already responded this session — release and re-assert CS to reset";
+        if (sensor.lastCmd !== null)
+          return "Received 0x" + toHexByte(sensor.lastCmd) + " — not the recognized command";
+        return "Selected, waiting for command";
+      }
+
+      function gpioStatusText() {
+        const selected = state.selectedDevice === "gpio";
+        const outHex = "0x" + toHexByte(gpio.outputReg);
+        if (!selected) return "Not selected (CS high, ignoring bus) — output " + outHex;
+        if (!state.csAsserted) return "Idle (CS released) — output " + outHex;
+        if (bus.queue.length || scriptQueue.length) return "Clocking...";
+        if (gpio.armedRead) return "Armed — ready to shift out " + outHex + " on Read";
+        if (gpio.lastCmd === GPIO_CMD_WRITE) return "Output updated to " + outHex;
+        if (gpio.lastCmd !== null)
+          return "Received 0x" + toHexByte(gpio.lastCmd) + " — not a recognized command";
+        return "Selected, waiting for command — output " + outHex;
       }
 
       function updateStatusUI() {
@@ -952,31 +1266,41 @@
             : bus.lastDecodedTemp.toFixed(2) + " °C";
         document.getElementById("mSimTemp").textContent =
           currentTemp().toFixed(2) + " °C";
+        document.getElementById("mGpioOut").textContent = "0x" + toHexByte(gpio.outputReg);
 
-        let statusText;
-        if (!state.csAsserted) {
-          statusText = "Idle (CS released)";
-        } else if (bus.queue.length) {
-          statusText = "Clocking...";
-        } else if (sensor.armed) {
-          statusText = "Armed — ready to respond to Read";
-        } else if (sensor.everResponded) {
-          statusText =
-            "Already responded this session — release and re-assert CS to reset";
-        } else if (sensor.lastCmd !== null) {
-          statusText =
-            "Received 0x" +
-            toHexByte(sensor.lastCmd) +
-            " — not the recognized command";
-        } else {
-          statusText = "Selected, waiting for command";
-        }
-        document.getElementById("sensorStatus").textContent = statusText;
-        document.getElementById("busStatus").textContent = bus.queue.length
-          ? "Clocking..."
-          : "Idle";
+        document.getElementById("sensorStatus").textContent = tempStatusText();
+        document.getElementById("gpioStatus").textContent = gpioStatusText();
+        renderGpioLeds();
+
+        document.getElementById("busStatus").textContent =
+          bus.queue.length || scriptQueue.length ? "Clocking..." : "Idle";
 
         updateButtonAvailability();
+      }
+
+      // ---- GPIO LED strips (schematic chip box + devices panel) ----
+      const schematicLedEls = buildLedStrip(document.getElementById("schematicLeds"));
+      const panelLedEls = buildLedStrip(document.getElementById("gpioLeds"));
+
+      function buildLedStrip(container) {
+        const leds = [];
+        for (let bit = 7; bit >= 0; bit--) {
+          const led = document.createElement("div");
+          led.className = "led";
+          led.title = "bit " + bit;
+          container.appendChild(led);
+          leds.push(led);
+        }
+        return leds; // index 0 = bit7 (MSB, leftmost) .. index 7 = bit0 (LSB, rightmost)
+      }
+
+      function renderGpioLeds() {
+        for (let i = 0; i < 8; i++) {
+          const bit = 7 - i;
+          const on = ((gpio.outputReg >> bit) & 1) === 1;
+          schematicLedEls[i].classList.toggle("on", on);
+          panelLedEls[i].classList.toggle("on", on);
+        }
       }
 
       // ---- Simulation tick / temperature drift ----
@@ -992,13 +1316,16 @@
 
       function pushSample(step) {
         sim.tickIndex++;
+        const csTemp = state.selectedDevice === "temp" && state.csAsserted ? 0 : 1;
+        const csGpio = state.selectedDevice === "gpio" && state.csAsserted ? 0 : 1;
         let sample;
         if (step) {
           bus.lastCopi = step.copi;
           bus.lastCipo = step.cipo;
           sample = {
             tick: sim.tickIndex,
-            cs: state.csAsserted ? 0 : 1,
+            csTemp,
+            csGpio,
             sck: step.sck,
             copi: step.copi,
             cipo: step.cipo,
@@ -1021,7 +1348,8 @@
           const idleSck = SPI_MODES[state.spiMode].cpol;
           sample = {
             tick: sim.tickIndex,
-            cs: state.csAsserted ? 0 : 1,
+            csTemp,
+            csGpio,
             sck: idleSck,
             copi: bus.lastCopi,
             cipo: bus.lastCipo,
@@ -1096,7 +1424,7 @@
         const h = rect.height;
         busCtx.clearRect(0, 0, w, h);
 
-        const padL = 50;
+        const padL = 70;
         const padR = 16;
         const padT = 10;
         const padB = 10;
@@ -1107,7 +1435,7 @@
 
         const span = state.zoomSteps;
         const cutoff = sim.tickIndex - span;
-        const laneH = gh / 4;
+        const laneH = gh / 5;
         const rootStyle = getComputedStyle(document.documentElement);
 
         // Vertical dashed guide at the start of every byte, spanning all
@@ -1127,7 +1455,8 @@
         busCtx.setLineDash([]);
 
         const lanes = [
-          { key: "cs", label: "CS", cssVar: "--orange" },
+          { key: "csTemp", label: "CS-T", cssVar: "--orange" },
+          { key: "csGpio", label: "CS-G", cssVar: "--red" },
           { key: "sck", label: "SCK", cssVar: "--dim" },
           { key: "copi", label: "COPI", cssVar: "--cyan" },
           { key: "cipo", label: "CIPO", cssVar: "--green" },
@@ -1251,7 +1580,10 @@
           while (sim.bitLabels.length && sim.bitLabels[0].startTick < cutoff) {
             sim.bitLabels.shift();
           }
-          if (bus.queue.length === 0) updateButtonAvailability();
+          if (bus.queue.length === 0) {
+            stepScript();
+            updateButtonAvailability();
+          }
         }
 
         drawBusGraph();
@@ -1262,8 +1594,8 @@
         requestAnimationFrame(draw);
       }
 
-      // Drives the MCU<->Sensor schematic wires: COPI/CIPO/SCK glow when
-      // electrically HIGH, but CS glows on logical assertion (it's
+      // Drives the MCU<->device schematic wires: COPI/CIPO/SCK glow when
+      // electrically HIGH, but each CS glows on logical assertion (it's
       // active-low on the wire, so "enabled" and "HIGH" are opposites).
       function updateSchematic() {
         const last = sim.history[sim.history.length - 1];
@@ -1275,8 +1607,17 @@
         document.getElementById("wireCipo").classList.toggle("lit", cipo === 1);
         document.getElementById("wireSck").classList.toggle("lit", sck === 1);
         document
-          .getElementById("wireCs")
-          .classList.toggle("lit", state.csAsserted);
+          .getElementById("wireCsTemp")
+          .classList.toggle("lit", state.selectedDevice === "temp" && state.csAsserted);
+        document
+          .getElementById("wireCsGpio")
+          .classList.toggle("lit", state.selectedDevice === "gpio" && state.csAsserted);
+        document
+          .getElementById("chipTemp")
+          .classList.toggle("active", state.selectedDevice === "temp");
+        document
+          .getElementById("chipGpio")
+          .classList.toggle("active", state.selectedDevice === "gpio");
       }
 
       // ---- Event wiring ----
@@ -1346,9 +1687,6 @@
         state.spiMode = DEFAULTS.spiMode;
         state.speed = DEFAULTS.speed;
         state.csAsserted = false;
-        state.writeLength = DEFAULTS.writeLength;
-        state.writeBytes = DEFAULTS.writeBytes.slice();
-        state.readLength = DEFAULTS.readLength;
         state.zoomSteps = DEFAULTS.zoomSteps;
         state.tempOverride = DEFAULTS.tempOverride;
         state.tempOverrideValue = DEFAULTS.tempOverrideValue;
@@ -1360,27 +1698,28 @@
         sensor.simTemp = 25.0;
         sensor.driftAcc = 0;
 
+        gpio.outputReg = 0x00;
+        gpio.armedRead = false;
+        gpio.lastCmd = null;
+
         resetSim();
-        syncControlsFromState();
         setSpiMode(DEFAULTS.spiMode);
         setSpeed(DEFAULTS.speed);
-        updateByteFieldVisibility();
+        setSelectedDevice(DEFAULTS.selectedDevice);
+        syncControlsFromState();
         updateStatusUI();
       });
 
       // Drive every input's on-screen value from state at load time instead
       // of trusting the HTML's static value="" attributes alone to match.
       function syncControlsFromState() {
-        writeLenSelect.value = String(state.writeLength);
-        byteInputs.forEach((el, i) => (el.value = toHexByte(state.writeBytes[i])));
-        readLenRange.value = state.readLength;
-        document.getElementById("readLenVal").textContent = state.readLength;
         zoomRange.value = state.zoomSteps;
         document.getElementById("zoomVal").textContent = state.zoomSteps;
         tempOverrideCheck.checked = state.tempOverride;
         tempOverrideInput.value = state.tempOverrideValue.toFixed(2);
         document.getElementById("tempVal").textContent =
           state.tempOverrideValue.toFixed(2);
+        bitSelect.value = "0";
       }
 
       window.addEventListener("resize", resizeCanvas);
@@ -1388,7 +1727,9 @@
       syncControlsFromState();
       setSpiMode(DEFAULTS.spiMode);
       setSpeed(DEFAULTS.speed);
-      updateByteFieldVisibility();
+      // Runs once at load to apply the device presets/visibility/active-
+      // button state that HTML's static attributes alone don't guarantee.
+      setSelectedDevice(DEFAULTS.selectedDevice);
       updateStatusUI();
       requestAnimationFrame(draw);
     </script>
