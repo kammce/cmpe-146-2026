@@ -921,13 +921,27 @@
         know which chip (if either) is actually driving that wire.
       </p>
       <p>
+        <strong>One command per chip-select session.</strong> Each device
+        only pays attention to the very first Write it sees after its CS
+        goes low &mdash; every Write after that is silently ignored, no
+        matter what's in it, until you release and re-assert CS. If that
+        first command isn't one the device recognizes, you get nothing:
+        e.g. select the GPIO expander and Write [0x25] then [0xFF] &mdash;
+        the moment 0x25 lands, the device is done for this session, and
+        the 0xFF right behind it (and any Read after) is ignored too. If
+        the first command <em>is</em> valid, it earns exactly one Read to
+        collect the result (if the command needs one) &mdash; once that
+        Read happens, the device locks out the same way. This is on
+        purpose: real SPI peripherals expect one clean transaction per CS
+        assertion, and always de-asserting CS when you're done is the
+        habit this is here to build.
+      </p>
+      <p>
         <strong>Temp Sensor.</strong> Assert its CS, then Write [0xC1, 0xA5]
         (command 0xC1 = read-back, address 0xA5) to arm a temperature
         reading, or Write [0x51] to arm a <em>humidity</em> reading instead
         (unsigned 16-bit, 0.01%RH per LSB). While CS stays asserted,
         pressing Read clocks out whichever 2-byte value was armed on CIPO.
-        Each kind only answers <em>once per chip-select session</em>:
-        reading again returns nothing until you release and re-assert CS.
         Both readings drift slowly on their own unless you check their
         Override boxes.
       </p>
@@ -944,19 +958,22 @@
       <p>
         <strong>GPIO Expander.</strong> An 8-bit output register that
         persists forever (it does <em>not</em> reset when its CS is
-        released, unlike the sensor's one-shot arm state). Write [0x50,
-        value] to set all 8 outputs at once, or Write [0x51] to arm it,
-        then Read 1 byte to shift the <em>current</em> register value back
-        out on CIPO. The LEDs (on its chip and in the devices panel) only
-        update once the relevant byte has actually finished clocking
-        across the wire, not the instant you click Write &mdash; watch the
-        trace to see exactly when the change lands. To flip just one bit
-        without disturbing the others, use "Toggle Bit": it scripts the
-        real read-modify-write sequence a driver would run &mdash; Read the
-        current output, flip one bit in software, then Write the whole
-        byte back &mdash; and you can watch all three transfers happen
-        back to back on the trace. It only runs with the GPIO's CS
-        asserted alone, so it can't accidentally trigger contention.
+        released, unlike the sensor's arm state). Write [0x50, value] to
+        set all 8 outputs at once, or Write [0x51] to arm it, then Read 1
+        byte to shift the <em>current</em> register value back out on
+        CIPO &mdash; either way, that's this session's one command. The
+        LEDs (on its chip and in the devices panel) only update once the
+        relevant byte has actually finished clocking across the wire, not
+        the instant you click Write &mdash; watch the trace to see exactly
+        when the change lands. To flip just one bit without disturbing the
+        others, use "Toggle Bit": it runs the real read-modify-write a
+        driver would &mdash; Read the current output, flip one bit in
+        software, then Write the whole byte back &mdash; as two separate
+        CS-bracketed transactions (since one CS session only ever gets one
+        command now), releasing and re-asserting the GPIO's CS in between.
+        Watch the CS-G lane drop between the two halves on the trace. It
+        only runs when both CS lines start out released, so it can't
+        collide with anything in progress or trigger contention.
       </p>
       <p>
         SPI Mode controls when data is sampled/shifted relative to the
@@ -1104,8 +1121,12 @@
       const sensor = {
         armedKind: null, // null | "temp" | "humidity" -- which reading (if
         // any) it's currently armed to respond with on the next Read.
-        everRespondedTemp: false, // one-shot per chip-select session, same
-        everRespondedHumidity: false, // idea as the original single-reading sensor.
+        commandLocked: false, // true once this device has processed ONE
+        // Write this chip-select session (whether recognized or not) --
+        // every later Write is silently ignored until CS is released and
+        // re-asserted. Trains the "always de-assert CS when you're done"
+        // habit: a wrong command locks the device out for nothing, and a
+        // right one only buys exactly one Read before locking out too.
         lastCmd: null,
         lastAddr: null,
         simTemp: 25.0,
@@ -1116,10 +1137,12 @@
 
       // Unlike the sensor, the GPIO expander's output register persists
       // across CS release/re-assert -- it's real persistent state, not a
-      // per-session transaction. Only armedRead/lastCmd reset with CS.
+      // per-session transaction. Only armedRead/lastCmd/commandLocked
+      // reset with CS.
       const gpio = {
         outputReg: 0x00,
         armedRead: false,
+        commandLocked: false, // see sensor.commandLocked above
         lastCmd: null,
       };
 
@@ -1286,19 +1309,27 @@
         updateStatusUI();
       }
 
+      // Only the FIRST Write a device sees during a chip-select session is
+      // ever processed -- every later one (correct or not) is silently
+      // ignored, so a device that got a bad command (or already completed
+      // its one task) just sits there deaf until CS toggles.
       function applyTempCommand(bytes) {
+        if (sensor.commandLocked) return;
+        sensor.commandLocked = true;
         sensor.lastCmd = bytes[0] ?? null;
         sensor.lastAddr = bytes[1] ?? null;
         if (bytes.length === 2 && bytes[0] === TEMP_CMD && bytes[1] === TEMP_ADDR) {
-          sensor.armedKind = sensor.everRespondedTemp ? null : "temp";
+          sensor.armedKind = "temp";
         } else if (bytes[0] === HUMIDITY_CMD) {
-          sensor.armedKind = sensor.everRespondedHumidity ? null : "humidity";
+          sensor.armedKind = "humidity";
         } else {
           sensor.armedKind = null;
         }
       }
 
       function applyGpioCommand(bytes) {
+        if (gpio.commandLocked) return;
+        gpio.commandLocked = true;
         const cmd = bytes[0] ?? null;
         gpio.lastCmd = cmd;
         if (cmd === GPIO_CMD_WRITE && bytes.length >= 2) {
@@ -1353,10 +1384,8 @@
         if (!contention && tempResponds) {
           if (sensor.armedKind === "temp") {
             bus.lastDecodedTemp = decodeTempSigned16(cipoBytes[0], cipoBytes[1]);
-            sensor.everRespondedTemp = true;
           } else if (sensor.armedKind === "humidity") {
             bus.lastDecodedHumidity = decodeHumidityUnsigned16(cipoBytes[0], cipoBytes[1]);
-            sensor.everRespondedHumidity = true;
           }
         }
         // Both devices consumed their armed state even on a contended
@@ -1368,8 +1397,7 @@
 
       function releaseCsTemp() {
         sensor.armedKind = null;
-        sensor.everRespondedTemp = false;
-        sensor.everRespondedHumidity = false;
+        sensor.commandLocked = false;
         sensor.lastCmd = null;
         sensor.lastAddr = null;
         bus.lastCopi = 0;
@@ -1378,23 +1406,38 @@
 
       function releaseCsGpio() {
         gpio.armedRead = false;
+        gpio.commandLocked = false;
         gpio.lastCmd = null;
         bus.lastCopi = 0;
         bus.lastCipo = 0;
       }
 
+      // setCsTemp/setCsGpio apply the CS change unconditionally -- used by
+      // the public toggle functions (after their own busy-guard) and by
+      // scripted sequences (e.g. Toggle Bit) that need to bracket a CS
+      // assert/release pair as one atomic step without re-entering that
+      // guard, since a script step's own queued siblings would otherwise
+      // make scriptQueue.length look "busy" even though it's safe.
+      function setCsTemp(asserted) {
+        state.csTemp = asserted;
+        if (!asserted) releaseCsTemp();
+        updateStatusUI();
+      }
+
+      function setCsGpio(asserted) {
+        state.csGpio = asserted;
+        if (!asserted) releaseCsGpio();
+        updateStatusUI();
+      }
+
       function toggleCsTemp() {
         if (bus.queue.length || scriptQueue.length) return; // don't yank CS mid-transfer
-        state.csTemp = !state.csTemp;
-        if (!state.csTemp) releaseCsTemp();
-        updateStatusUI();
+        setCsTemp(!state.csTemp);
       }
 
       function toggleCsGpio() {
         if (bus.queue.length || scriptQueue.length) return;
-        state.csGpio = !state.csGpio;
-        if (!state.csGpio) releaseCsGpio();
-        updateStatusUI();
+        setCsGpio(!state.csGpio);
       }
 
       // ---- Quick-fill presets (convenience only -- doesn't touch CS) ----
@@ -1418,15 +1461,21 @@
       });
 
       // ---- GPIO "Toggle Bit" read-modify-write sequence ----
-      // Scripts the same three transfers a real driver would issue to
-      // flip one output bit without disturbing the others: arm a Read,
-      // Read the current register, then Write the whole byte back with
-      // just that one bit flipped. Requires the GPIO's CS asserted ALONE
-      // so it can't accidentally trip bus contention.
+      // Scripts the same read-modify-write a real driver would run to
+      // flip one output bit without disturbing the others. Each device
+      // now only accepts ONE command per chip-select session, so this can
+      // no longer arm-then-read-then-write under a single CS assertion --
+      // it has to be two separate transactions, exactly like real
+      // hardware: assert CS, arm a Read, Read the current register,
+      // release CS; then assert CS again, Write the whole byte back with
+      // just that one bit flipped, release CS. Requires both CS lines
+      // released to start, so it can't collide with anything already in
+      // progress or trip bus contention.
       toggleBitBtn.addEventListener("click", () => {
-        if (bus.queue.length || scriptQueue.length || !state.csGpio || state.csTemp) return;
+        if (bus.queue.length || scriptQueue.length || state.csGpio || state.csTemp) return;
         const bit = parseInt(bitSelect.value, 10);
 
+        scriptQueue.push(() => setCsGpio(true));
         scriptQueue.push(() => {
           state.writeLength = 1;
           state.writeBytes[0] = GPIO_CMD_READ;
@@ -1440,6 +1489,8 @@
           document.getElementById("readLenVal").textContent = 1;
           doRead();
         });
+        scriptQueue.push(() => setCsGpio(false));
+        scriptQueue.push(() => setCsGpio(true));
         scriptQueue.push(() => {
           const current = bus.lastReadBytes ? bus.lastReadBytes[0] : gpio.outputReg;
           const updated = current ^ (1 << bit);
@@ -1450,6 +1501,7 @@
           updateByteFieldVisibility();
           doWrite();
         });
+        scriptQueue.push(() => setCsGpio(false));
       });
 
       function stepScript() {
@@ -1475,7 +1527,7 @@
         writeBtn.disabled = busy;
         readBtn.disabled = busy;
         presetSelect.disabled = busy;
-        toggleBitBtn.disabled = busy || !state.csGpio || state.csTemp;
+        toggleBitBtn.disabled = busy || state.csGpio || state.csTemp;
         csTempBtn.classList.toggle("asserted", state.csTemp);
         csGpioBtn.classList.toggle("asserted", state.csGpio);
         csTempBtn.textContent = state.csTemp ? "Release CS (Temp Sensor)" : "Assert CS (Temp Sensor)";
@@ -1487,9 +1539,9 @@
         if (bus.queue.length) return "Clocking...";
         if (sensor.armedKind === "temp") return "Armed — ready to respond with temperature on Read";
         if (sensor.armedKind === "humidity") return "Armed — ready to respond with humidity on Read";
-        if (sensor.lastCmd !== null)
-          return "Received 0x" + toHexByte(sensor.lastCmd) + " — not armed (already answered, or not recognized)";
-        return "Selected, waiting for command";
+        if (sensor.commandLocked)
+          return "🔒 Locked after 0x" + toHexByte(sensor.lastCmd) + " — release CS to try again";
+        return "Selected, waiting for its one command this session";
       }
 
       function gpioStatusText() {
@@ -1497,9 +1549,9 @@
         if (!state.csGpio) return "Idle (CS released) — output " + outHex;
         if (bus.queue.length || scriptQueue.length) return "Clocking...";
         if (gpio.armedRead) return "Armed — ready to shift out " + outHex + " on Read";
-        if (gpio.lastCmd === GPIO_CMD_WRITE) return "Output updated to " + outHex;
-        if (gpio.lastCmd !== null) return "Received 0x" + toHexByte(gpio.lastCmd) + " — not a recognized command";
-        return "Selected, waiting for command — output " + outHex;
+        if (gpio.commandLocked)
+          return "🔒 Locked after 0x" + toHexByte(gpio.lastCmd) + " — release CS to try again (output " + outHex + ")";
+        return "Selected, waiting for its one command this session — output " + outHex;
       }
 
       function updateStatusUI() {
@@ -2009,8 +2061,7 @@
         state.humidityOverrideValue = DEFAULTS.humidityOverrideValue;
 
         sensor.armedKind = null;
-        sensor.everRespondedTemp = false;
-        sensor.everRespondedHumidity = false;
+        sensor.commandLocked = false;
         sensor.lastCmd = null;
         sensor.lastAddr = null;
         sensor.simTemp = 25.0;
@@ -2020,6 +2071,7 @@
 
         gpio.outputReg = 0x00;
         gpio.armedRead = false;
+        gpio.commandLocked = false;
         gpio.lastCmd = null;
 
         resetSim();
