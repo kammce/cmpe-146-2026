@@ -197,11 +197,6 @@
         box-shadow: 0 0 10px 1px rgba(34, 211, 238, 0.35);
       }
 
-      .chip-box.stub {
-        opacity: 0.6;
-        border-style: dashed;
-      }
-
       .chip-box .chip-title {
         color: var(--cyan);
         font-weight: bold;
@@ -515,7 +510,8 @@
         font-weight: bold;
       }
 
-      #readRegBtn {
+      #readRegLightBtn,
+      #readRegAccelBtn {
         width: 100%;
         background: linear-gradient(135deg, #c084fc, #fb923c);
         border: none;
@@ -610,9 +606,10 @@
             <div class="chip-sub">addr 0x23</div>
             <div class="meter"><div class="meter-fill" id="schematicLuxMeter"></div></div>
           </div>
-          <div class="chip-box stub" id="chipAccel">
+          <div class="chip-box" id="chipAccel">
             <div class="chip-title">Accelerometer</div>
-            <div class="chip-sub">addr 0x68 &mdash; not implemented</div>
+            <div class="chip-sub">addr 0x68</div>
+            <div class="meter"><div class="meter-fill" id="schematicAccelMeter" style="background: var(--magenta)"></div></div>
           </div>
         </div>
       </div>
@@ -707,11 +704,8 @@
 
         <div class="device-box">
           <div class="device-title">Accelerometer (0x68)</div>
-          <div class="device-sub">
-            Not implemented in this visualizer &mdash; any transaction
-            addressed to 0x68 will NACK, just like a missing or
-            wrong-address device on a real bus.
-          </div>
+          <div class="device-sub" id="accelStatus">Idle</div>
+          <div class="meter"><div class="meter-fill" id="panelAccelMeter" style="background: var(--magenta)"></div></div>
         </div>
 
         <h2 style="margin-top: 4px">Status</h2>
@@ -743,6 +737,23 @@
         <div class="metric">
           <span>Simulated Lux</span
           ><span class="val" id="mSimLux">400 lx</span>
+        </div>
+        <div class="metric">
+          <span>Accel Pointer</span
+          ><span class="val" id="mAccelPointer">0x00</span>
+        </div>
+        <div class="metric">
+          <span>Accel Power</span><span class="val" id="mAccelPower">OFF</span>
+        </div>
+        <div class="metric" style="border-left-color: var(--magenta)">
+          <span>Last Decoded Accel</span
+          ><span class="val" id="mDecodedAccel" style="color: var(--magenta)"
+            >--</span
+          >
+        </div>
+        <div class="metric">
+          <span>Simulated Accel</span
+          ><span class="val" id="mSimAccel">X:0 Y:0 Z:1000 mg</span>
         </div>
     </div>
 
@@ -778,8 +789,20 @@
             <option value="lightPowerOff">
               Light Sensor: Write CONFIG = 0x00 (power off)
             </option>
-            <option value="accelProbe">
-              Accelerometer: Probe 0x68 (expect NACK)
+            <option value="accelPtrWhoAmI">
+              Accelerometer: Set Pointer → WHO_AM_I (0x00)
+            </option>
+            <option value="accelPtrConfig">
+              Accelerometer: Set Pointer → CONFIG (0x01)
+            </option>
+            <option value="accelPtrData">
+              Accelerometer: Set Pointer → X/Y/Z (0x02)
+            </option>
+            <option value="accelPowerOn">
+              Accelerometer: Write CONFIG = 0x01 (power on)
+            </option>
+            <option value="accelPowerOff">
+              Accelerometer: Write CONFIG = 0x00 (power off)
             </option>
             <option value="noDevice">
               No Device: Probe 0x10 (expect NACK)
@@ -814,8 +837,8 @@
             </div>
           </div>
           <div class="desc-text" style="margin-bottom: 8px">
-            First byte sets the light sensor's register pointer; any bytes
-            after that write sequentially from there.
+            First byte sets the addressed device's register pointer; any
+            bytes after that write sequentially from there.
           </div>
           <button id="writeBtn">Write</button>
         </div>
@@ -837,15 +860,15 @@
           <button id="readBtn">Read</button>
         </div>
 
-        <div class="control-group">
+        <div class="control-group device-only-light">
           <h3>Light Sensor</h3>
-          <label for="regSelect">Read a Register (repeated START)</label>
-          <select id="regSelect">
+          <label for="regSelectLight">Read a Register (repeated START)</label>
+          <select id="regSelectLight">
             <option value="0x00">WHO_AM_I (0x00, 1 byte)</option>
             <option value="0x01">CONFIG (0x01, 1 byte)</option>
             <option value="0x02" selected>LUX (0x02, 2 bytes)</option>
           </select>
-          <button id="readRegBtn" style="margin-top: 8px">
+          <button id="readRegLightBtn" style="margin-top: 8px">
             Read Register (Write ptr &rarr; Sr &rarr; Read)
           </button>
 
@@ -865,6 +888,23 @@
             <label for="luxOverrideCheck" style="margin: 0"
               >Override (freeze at this value)</label
             >
+          </div>
+        </div>
+
+        <div class="control-group device-only-accel hidden">
+          <h3>Accelerometer</h3>
+          <label for="regSelectAccel">Read a Register (repeated START)</label>
+          <select id="regSelectAccel">
+            <option value="0x00">WHO_AM_I (0x00, 1 byte)</option>
+            <option value="0x01">CONFIG (0x01, 1 byte)</option>
+            <option value="0x02" selected>X/Y/Z burst (0x02, 6 bytes)</option>
+          </select>
+          <button id="readRegAccelBtn" style="margin-top: 8px">
+            Read Register (Write ptr &rarr; Sr &rarr; Read)
+          </button>
+          <div class="desc-text" style="margin-top: 8px">
+            Needs its CONFIG power bit set first, exactly like the light
+            sensor &mdash; use the Quick Fill preset or Write [0x01, 0x01].
           </div>
         </div>
 
@@ -909,14 +949,25 @@
         direction flip from W to R without the bus ever going idle.
       </p>
       <p>
-        <strong>Accelerometer (0x68) &mdash; not implemented yet.</strong>
-        It's drawn on the schematic to show it shares the exact same two
-        wires as the light sensor, but this first pass doesn't give it any
-        register logic. Addressing 0x68 (or anything else nobody owns,
-        like the "No Device" preset at 0x10) always ends in a NACK right
-        after the address byte &mdash; a very real scenario on an actual
-        bus when a part is missing, unpowered, or you simply typed the
-        wrong address.
+        <strong>Accelerometer (0x68).</strong> Its own, completely
+        independent register space on the same two wires &mdash; same
+        shape as the light sensor's (0x00 WHO_AM_I, 0x01 CONFIG with a
+        power bit, data registers from 0x02), because that's a genuinely
+        common convention, not a coincidence of this simulator. It needs
+        to be powered on the same way: Write CONFIG=0x01 before X/Y/Z
+        means anything, otherwise every axis reads zero. The three axes
+        are 0x02&ndash;0x07 (X, then Y, then Z, each signed 16-bit,
+        1&nbsp;mg/LSB, MSB first) &mdash; reading 6 bytes starting at 0x02
+        bursts all three out in one transaction, the classic way real
+        accelerometer drivers grab a full sample. At rest Z reads close to
+        +1000&nbsp;mg (gravity) while X and Y hover near zero, all three
+        drifting slightly to simulate a hand that isn't perfectly still.
+      </p>
+      <p>
+        Addressing anything nobody owns &mdash; like the "No Device"
+        preset at 0x10 &mdash; still always ends in a NACK right after the
+        address byte &mdash; a very real scenario on an actual bus when a
+        part is missing, unpowered, or you simply typed the wrong address.
       </p>
       <p>
         Each data byte the controller <em>reads</em> gets ACKed by the
@@ -951,8 +1002,10 @@
       const zoomRange = document.getElementById("zoomRange");
       const readLenRange = document.getElementById("readLenRange");
       const readBtn = document.getElementById("readBtn");
-      const regSelect = document.getElementById("regSelect");
-      const readRegBtn = document.getElementById("readRegBtn");
+      const regSelectLight = document.getElementById("regSelectLight");
+      const readRegLightBtn = document.getElementById("readRegLightBtn");
+      const regSelectAccel = document.getElementById("regSelectAccel");
+      const readRegAccelBtn = document.getElementById("readRegAccelBtn");
       const luxOverrideInput = document.getElementById("luxOverrideInput");
       const luxOverrideCheck = document.getElementById("luxOverrideCheck");
       const resetBtn = document.getElementById("resetBtn");
@@ -988,25 +1041,44 @@
       const HALF_BIT_MS = { standard: 220, fast: 90, fastplus: 28 };
       const SPEED_LABEL = { standard: "100 kHz", fast: "400 kHz", fastplus: "1 MHz" };
 
-      // Manual: ambient light drift -- every DRIFT_INTERVAL_MS, nudge the
-      // simulated reading by up to +/- DRIFT_STEP lux, clamped to a
-      // plausible indoor range.
+      // Manual: ambient drift -- every DRIFT_INTERVAL_MS, nudge each
+      // simulated reading by up to +/- its own step, clamped to a
+      // plausible range. Light and accel drift independently.
       const DRIFT_INTERVAL_MS = 450;
       const LUX_DRIFT_STEP = 8;
       const LUX_MIN = 0;
       const LUX_MAX = 1200;
+      const ACCEL_DRIFT_STEP = 15; // mg
+      const ACCEL_MIN = -2000;
+      const ACCEL_MAX = 2000;
 
       // Bus addresses.
       const LIGHT_ADDR = 0x23;
-      const ACCEL_ADDR = 0x68; // present on the schematic, not implemented
+      const ACCEL_ADDR = 0x68;
 
       // Light sensor register map.
-      const REG_WHO_AM_I = 0x00;
-      const REG_CONFIG = 0x01;
-      const REG_LUX_H = 0x02;
-      const REG_LUX_L = 0x03;
-      const WHO_AM_I_VALUE = 0x53;
-      const REG_READ_LEN = { 0x00: 1, 0x01: 1, 0x02: 2 };
+      const LIGHT_REG_WHO_AM_I = 0x00;
+      const LIGHT_REG_CONFIG = 0x01;
+      const LIGHT_REG_LUX_H = 0x02;
+      const LIGHT_REG_LUX_L = 0x03;
+      const LIGHT_WHO_AM_I_VALUE = 0x53;
+      const LIGHT_REG_READ_LEN = { 0x00: 1, 0x01: 1, 0x02: 2 };
+
+      // Accelerometer register map -- same shape as the light sensor's
+      // (its own independent address space: WHO_AM_I, then a CONFIG power
+      // bit, then data registers), because that pattern really is a
+      // common I2C convention, not just reused code. X/Y/Z is a 6-byte
+      // burst starting at 0x02 instead of the light sensor's 2-byte LUX.
+      const ACCEL_REG_WHO_AM_I = 0x00;
+      const ACCEL_REG_CONFIG = 0x01;
+      const ACCEL_REG_X_H = 0x02;
+      const ACCEL_REG_X_L = 0x03;
+      const ACCEL_REG_Y_H = 0x04;
+      const ACCEL_REG_Y_L = 0x05;
+      const ACCEL_REG_Z_H = 0x06;
+      const ACCEL_REG_Z_L = 0x07;
+      const ACCEL_WHO_AM_I_VALUE = 0xa0;
+      const ACCEL_REG_READ_LEN = { 0x00: 1, 0x01: 1, 0x02: 6 };
 
       const PRESETS = {
         lightPtrWhoAmI: { address: LIGHT_ADDR, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
@@ -1014,7 +1086,11 @@
         lightPtrLux: { address: LIGHT_ADDR, writeBytes: [0x02, 0x00, 0x00, 0x00], writeLength: 1, readLength: 2 },
         lightPowerOn: { address: LIGHT_ADDR, writeBytes: [0x01, 0x01, 0x00, 0x00], writeLength: 2, readLength: 1 },
         lightPowerOff: { address: LIGHT_ADDR, writeBytes: [0x01, 0x00, 0x00, 0x00], writeLength: 2, readLength: 1 },
-        accelProbe: { address: ACCEL_ADDR, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+        accelPtrWhoAmI: { address: ACCEL_ADDR, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+        accelPtrConfig: { address: ACCEL_ADDR, writeBytes: [0x01, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+        accelPtrData: { address: ACCEL_ADDR, writeBytes: [0x02, 0x00, 0x00, 0x00], writeLength: 1, readLength: 6 },
+        accelPowerOn: { address: ACCEL_ADDR, writeBytes: [0x01, 0x01, 0x00, 0x00], writeLength: 2, readLength: 1 },
+        accelPowerOff: { address: ACCEL_ADDR, writeBytes: [0x01, 0x00, 0x00, 0x00], writeLength: 2, readLength: 1 },
         noDevice: { address: 0x10, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
       };
 
@@ -1052,6 +1128,18 @@
         driftAcc: 0,
       };
 
+      // Same idea for the accelerometer -- its pointer and CONFIG power
+      // bit persist too. Z starts near +1000 mg (gravity) like a sensor
+      // resting flat; X/Y start near 0 mg.
+      const accel = {
+        pointer: 0x00,
+        power: false,
+        simX: 0,
+        simY: 0,
+        simZ: 1000,
+        driftAcc: 0,
+      };
+
       const bus = {
         queue: [], // half-steps waiting to be played into history
         lastScl: 1,
@@ -1062,11 +1150,12 @@
         lastWriteBytes: null,
         lastReadBytes: null,
         lastDecodedLux: null,
+        lastDecodedAccel: null,
         // Runs once the transfer just pushed onto `queue` has fully
         // drained -- this is where device state actually changes (the
-        // register pointer, CONFIG power bit, decoded lux), so nothing
-        // updates until the bytes have really finished clocking across
-        // the wire instead of the instant a button is clicked.
+        // register pointer, CONFIG power bit, decoded lux/accel), so
+        // nothing updates until the bytes have really finished clocking
+        // across the wire instead of the instant a button is clicked.
         pendingCompletion: null,
       };
 
@@ -1095,6 +1184,7 @@
         bus.lastWriteBytes = null;
         bus.lastReadBytes = null;
         bus.lastDecodedLux = null;
+        bus.lastDecodedAccel = null;
         bus.pendingCompletion = null;
       }
 
@@ -1121,25 +1211,60 @@
         return state.luxOverride ? state.luxOverrideValue : light.simLux;
       }
 
+      // ---- Accel encode/decode: signed 16-bit, 1 mg/LSB, MSB first
+      function encodeAccelSigned16(mg) {
+        let raw = Math.round(mg);
+        raw = Math.max(-32768, Math.min(32767, raw));
+        if (raw < 0) raw += 65536;
+        return { msb: (raw >> 8) & 0xff, lsb: raw & 0xff };
+      }
+
+      function decodeAccelSigned16(msb, lsb) {
+        let raw = ((msb << 8) | lsb) & 0xffff;
+        if (raw & 0x8000) raw -= 0x10000;
+        return raw;
+      }
+
       // ---- Light sensor register access ----
       function lightReadByte(reg) {
-        if (reg === REG_WHO_AM_I) return WHO_AM_I_VALUE;
-        if (reg === REG_CONFIG) return light.power ? 0x01 : 0x00;
-        if (reg === REG_LUX_H) return light.power ? encodeLux16(currentLux()).msb : 0x00;
-        if (reg === REG_LUX_L) return light.power ? encodeLux16(currentLux()).lsb : 0x00;
+        if (reg === LIGHT_REG_WHO_AM_I) return LIGHT_WHO_AM_I_VALUE;
+        if (reg === LIGHT_REG_CONFIG) return light.power ? 0x01 : 0x00;
+        if (reg === LIGHT_REG_LUX_H) return light.power ? encodeLux16(currentLux()).msb : 0x00;
+        if (reg === LIGHT_REG_LUX_L) return light.power ? encodeLux16(currentLux()).lsb : 0x00;
         return 0x00; // past the register map -- real hardware just returns 0
       }
 
       function lightWriteByte(reg, value) {
-        if (reg === REG_CONFIG) light.power = (value & 0x01) === 1;
+        if (reg === LIGHT_REG_CONFIG) light.power = (value & 0x01) === 1;
         // Every other register is read-only -- the device still ACKs the
         // byte (it's on the wire either way) but silently discards it,
         // exactly like real hardware.
       }
 
+      // ---- Accelerometer register access ----
+      function accelReadByte(reg) {
+        if (reg === ACCEL_REG_WHO_AM_I) return ACCEL_WHO_AM_I_VALUE;
+        if (reg === ACCEL_REG_CONFIG) return accel.power ? 0x01 : 0x00;
+        if (!accel.power) return 0x00; // powered off -- every axis reads zero,
+        // same rule as the light sensor's CONFIG power bit.
+        if (reg === ACCEL_REG_X_H) return encodeAccelSigned16(accel.simX).msb;
+        if (reg === ACCEL_REG_X_L) return encodeAccelSigned16(accel.simX).lsb;
+        if (reg === ACCEL_REG_Y_H) return encodeAccelSigned16(accel.simY).msb;
+        if (reg === ACCEL_REG_Y_L) return encodeAccelSigned16(accel.simY).lsb;
+        if (reg === ACCEL_REG_Z_H) return encodeAccelSigned16(accel.simZ).msb;
+        if (reg === ACCEL_REG_Z_L) return encodeAccelSigned16(accel.simZ).lsb;
+        return 0x00;
+      }
+
+      function accelWriteByte(reg, value) {
+        if (reg === ACCEL_REG_CONFIG) accel.power = (value & 0x01) === 1;
+        // Every other register is read-only, same as the light sensor.
+      }
+
       function addressedDevice(addr) {
-        return addr === LIGHT_ADDR ? "light" : null; // 0x68 and anything
-        // else has nobody listening in this simulator -- NACK.
+        if (addr === LIGHT_ADDR) return "light";
+        if (addr === ACCEL_ADDR) return "accel";
+        return null; // nobody else is on this simulated bus -- NACK.
       }
 
       // ---- Builds the half-step (SCL/SDA) waveform for one or more I2C
@@ -1219,6 +1344,12 @@
               lightWriteByte(light.pointer, bytes[i]);
               light.pointer = (light.pointer + 1) & 0xff;
             }
+          } else if (addrAck && dev === "accel" && bytes.length > 0) {
+            accel.pointer = bytes[0] & 0xff;
+            for (let i = 1; i < bytes.length; i++) {
+              accelWriteByte(accel.pointer, bytes[i]);
+              accel.pointer = (accel.pointer + 1) & 0xff;
+            }
           }
         };
         updateStatusUI();
@@ -1232,7 +1363,7 @@
         const addrAck = dev !== null;
         let dataBytes = new Array(n).fill(0x00);
         let byteAcks = new Array(n).fill(false);
-        let startPointer = light.pointer;
+        let startPointer = dev === "accel" ? accel.pointer : light.pointer;
         if (addrAck && dev === "light") {
           let ptr = light.pointer;
           for (let i = 0; i < n; i++) {
@@ -1241,6 +1372,14 @@
           }
           byteAcks = new Array(n).fill(true);
           if (n > 0) byteAcks[n - 1] = false; // controller NACKs the final byte to end the read
+        } else if (addrAck && dev === "accel") {
+          let ptr = accel.pointer;
+          for (let i = 0; i < n; i++) {
+            dataBytes[i] = accelReadByte(ptr);
+            ptr = (ptr + 1) & 0xff;
+          }
+          byteAcks = new Array(n).fill(true);
+          if (n > 0) byteAcks[n - 1] = false;
         }
         const segments = [{ type: "start" }, { type: "addr", addr, rw: 1, ack: addrAck }];
         if (addrAck) segments.push({ type: "data", bytes: dataBytes, acks: byteAcks });
@@ -1251,10 +1390,20 @@
           bus.lastAddrAck = addrAck;
           bus.lastReadBytes = dataBytes;
           bus.lastDecodedLux = null;
+          bus.lastDecodedAccel = null;
           if (addrAck && dev === "light") {
             light.pointer = (startPointer + n) & 0xff;
-            if (startPointer === REG_LUX_H && n >= 2) {
+            if (startPointer === LIGHT_REG_LUX_H && n >= 2) {
               bus.lastDecodedLux = decodeLux16(dataBytes[0], dataBytes[1]);
+            }
+          } else if (addrAck && dev === "accel") {
+            accel.pointer = (startPointer + n) & 0xff;
+            if (startPointer === ACCEL_REG_X_H && n >= 6) {
+              bus.lastDecodedAccel = {
+                x: decodeAccelSigned16(dataBytes[0], dataBytes[1]),
+                y: decodeAccelSigned16(dataBytes[2], dataBytes[3]),
+                z: decodeAccelSigned16(dataBytes[4], dataBytes[5]),
+              };
             }
           }
         };
@@ -1263,13 +1412,18 @@
 
       // Scripts the classic combined I2C access as ONE unbroken
       // transaction: write the register pointer, repeated START (no STOP
-      // in between), then read the register's bytes back.
-      function doReadRegister() {
+      // in between), then read the register's bytes back. `regSource`
+      // picks which of the two per-device dropdowns supplies the register
+      // number -- the transaction's actual ACK/NACK still comes from
+      // whatever device (if any) really owns the address field, exactly
+      // like Write/Read, so this stays correct even if they don't match.
+      function doReadRegister(regSource) {
         if (bus.queue.length) return;
         const addr = state.address & 0x7f;
-        const reg = parseInt(regSelect.value, 16);
-        const n = REG_READ_LEN[reg] ?? 1;
+        const regEl = regSource === "accel" ? regSelectAccel : regSelectLight;
+        const reg = parseInt(regEl.value, 16);
         const dev = addressedDevice(addr);
+        const n = dev === "accel" ? (ACCEL_REG_READ_LEN[reg] ?? 1) : (LIGHT_REG_READ_LEN[reg] ?? 1);
         const addrAck = dev !== null;
         let dataBytes = new Array(n).fill(0x00);
         let byteAcks = new Array(n).fill(false);
@@ -1277,6 +1431,14 @@
           let ptr = reg;
           for (let i = 0; i < n; i++) {
             dataBytes[i] = lightReadByte(ptr);
+            ptr = (ptr + 1) & 0xff;
+          }
+          byteAcks = new Array(n).fill(true);
+          if (n > 0) byteAcks[n - 1] = false;
+        } else if (addrAck && dev === "accel") {
+          let ptr = reg;
+          for (let i = 0; i < n; i++) {
+            dataBytes[i] = accelReadByte(ptr);
             ptr = (ptr + 1) & 0xff;
           }
           byteAcks = new Array(n).fill(true);
@@ -1297,10 +1459,20 @@
           bus.lastWriteBytes = [reg];
           bus.lastReadBytes = dataBytes;
           bus.lastDecodedLux = null;
+          bus.lastDecodedAccel = null;
           if (addrAck && dev === "light") {
             light.pointer = (reg + n) & 0xff;
-            if (reg === REG_LUX_H && n >= 2) {
+            if (reg === LIGHT_REG_LUX_H && n >= 2) {
               bus.lastDecodedLux = decodeLux16(dataBytes[0], dataBytes[1]);
+            }
+          } else if (addrAck && dev === "accel") {
+            accel.pointer = (reg + n) & 0xff;
+            if (reg === ACCEL_REG_X_H && n >= 6) {
+              bus.lastDecodedAccel = {
+                x: decodeAccelSigned16(dataBytes[0], dataBytes[1]),
+                y: decodeAccelSigned16(dataBytes[2], dataBytes[3]),
+                z: decodeAccelSigned16(dataBytes[4], dataBytes[5]),
+              };
             }
           }
         };
@@ -1326,6 +1498,7 @@
         document.getElementById("readLenVal").textContent = state.readLength;
         updateByteFieldVisibility();
         updateSchematic();
+        updateControlVisibility();
       }
 
       presetSelect.addEventListener("change", (e) => {
@@ -1335,10 +1508,25 @@
         applyPreset(key);
       });
 
-      readRegBtn.addEventListener("click", () => {
+      readRegLightBtn.addEventListener("click", () => {
         if (bus.queue.length) return;
-        doReadRegister();
+        doReadRegister("light");
       });
+
+      readRegAccelBtn.addEventListener("click", () => {
+        if (bus.queue.length) return;
+        doReadRegister("accel");
+      });
+
+      // Shows only the register-read section for whichever device the
+      // Target Address field currently points at -- mirrors the schematic
+      // chip highlight, so the visible controls always match what a Write
+      // or Read will actually talk to.
+      function updateControlVisibility() {
+        const dev = addressedDevice(state.address & 0x7f);
+        document.querySelectorAll(".device-only-light").forEach((el) => el.classList.toggle("hidden", dev !== "light"));
+        document.querySelectorAll(".device-only-accel").forEach((el) => el.classList.toggle("hidden", dev !== "accel"));
+      }
 
       // ---- UI sync ----
       function updateByteFieldVisibility() {
@@ -1351,13 +1539,21 @@
         const busy = bus.queue.length > 0;
         writeBtn.disabled = busy;
         readBtn.disabled = busy;
-        readRegBtn.disabled = busy;
+        readRegLightBtn.disabled = busy;
+        readRegAccelBtn.disabled = busy;
         presetSelect.disabled = busy;
       }
 
       function lightStatusText() {
         const ptrHex = "0x" + toHexByte(light.pointer);
         const power = light.power ? "ON" : "OFF";
+        if (bus.queue.length) return "Clocking...";
+        return "Power " + power + " — pointer at " + ptrHex;
+      }
+
+      function accelStatusText() {
+        const ptrHex = "0x" + toHexByte(accel.pointer);
+        const power = accel.power ? "ON" : "OFF";
         if (bus.queue.length) return "Clocking...";
         return "Power " + power + " — pointer at " + ptrHex;
       }
@@ -1383,12 +1579,21 @@
         document.getElementById("mDecodedLux").textContent =
           bus.lastDecodedLux === null ? "--" : bus.lastDecodedLux + " lx";
         document.getElementById("mSimLux").textContent = Math.round(currentLux()) + " lx";
+        document.getElementById("mAccelPointer").textContent = "0x" + toHexByte(accel.pointer);
+        document.getElementById("mAccelPower").textContent = accel.power ? "ON" : "OFF";
+        document.getElementById("mDecodedAccel").textContent = bus.lastDecodedAccel
+          ? "X:" + bus.lastDecodedAccel.x + " Y:" + bus.lastDecodedAccel.y + " Z:" + bus.lastDecodedAccel.z + " mg"
+          : "--";
+        document.getElementById("mSimAccel").textContent =
+          "X:" + Math.round(accel.simX) + " Y:" + Math.round(accel.simY) + " Z:" + Math.round(accel.simZ) + " mg";
 
         document.getElementById("lightStatus").textContent = lightStatusText();
+        document.getElementById("accelStatus").textContent = accelStatusText();
 
         document.getElementById("busStatus").textContent = bus.queue.length ? "Clocking..." : "Idle";
 
         updateLuxMeter();
+        updateAccelMeter();
         updateButtonAvailability();
       }
 
@@ -1398,14 +1603,37 @@
         document.getElementById("panelLuxMeter").style.width = pct + "%";
       }
 
+      // A single "motion" bar fed by the 3-axis vector magnitude, since a
+      // plain 0-100% bar can't represent three signed values at once --
+      // higher means more total acceleration (tilted or shaken), roughly
+      // 50% at rest under gravity alone.
+      function updateAccelMeter() {
+        const mag = Math.sqrt(accel.simX * accel.simX + accel.simY * accel.simY + accel.simZ * accel.simZ);
+        const pct = Math.max(0, Math.min(100, (mag / ACCEL_MAX) * 100));
+        document.getElementById("schematicAccelMeter").style.width = pct + "%";
+        document.getElementById("panelAccelMeter").style.width = pct + "%";
+      }
+
       // ---- Simulation tick / drift ----
       function stepDrift(dtMs) {
-        if (state.luxOverride) return;
-        light.driftAcc += dtMs;
-        while (light.driftAcc >= DRIFT_INTERVAL_MS) {
-          light.driftAcc -= DRIFT_INTERVAL_MS;
-          light.simLux += (Math.random() * 2 - 1) * LUX_DRIFT_STEP;
-          light.simLux = Math.max(LUX_MIN, Math.min(LUX_MAX, light.simLux));
+        if (!state.luxOverride) {
+          light.driftAcc += dtMs;
+          while (light.driftAcc >= DRIFT_INTERVAL_MS) {
+            light.driftAcc -= DRIFT_INTERVAL_MS;
+            light.simLux += (Math.random() * 2 - 1) * LUX_DRIFT_STEP;
+            light.simLux = Math.max(LUX_MIN, Math.min(LUX_MAX, light.simLux));
+          }
+        }
+
+        accel.driftAcc += dtMs;
+        while (accel.driftAcc >= DRIFT_INTERVAL_MS) {
+          accel.driftAcc -= DRIFT_INTERVAL_MS;
+          accel.simX += (Math.random() * 2 - 1) * ACCEL_DRIFT_STEP;
+          accel.simY += (Math.random() * 2 - 1) * ACCEL_DRIFT_STEP;
+          accel.simZ += (Math.random() * 2 - 1) * ACCEL_DRIFT_STEP;
+          accel.simX = Math.max(ACCEL_MIN, Math.min(ACCEL_MAX, accel.simX));
+          accel.simY = Math.max(ACCEL_MIN, Math.min(ACCEL_MAX, accel.simY));
+          accel.simZ = Math.max(ACCEL_MIN, Math.min(ACCEL_MAX, accel.simZ));
         }
       }
 
@@ -1674,6 +1902,10 @@
         drawBusGraph();
         updateSchematic();
         document.getElementById("mSimLux").textContent = Math.round(currentLux()) + " lx";
+        document.getElementById("mSimAccel").textContent =
+          "X:" + Math.round(accel.simX) + " Y:" + Math.round(accel.simY) + " Z:" + Math.round(accel.simZ) + " mg";
+        updateLuxMeter();
+        updateAccelMeter();
 
         requestAnimationFrame(draw);
       }
@@ -1728,6 +1960,7 @@
         addrInput.value = cleaned;
         state.address = Math.min(0x7f, parseInt(cleaned, 16) || 0);
         updateSchematic();
+        updateControlVisibility();
       });
 
       writeLenSelect.addEventListener("change", (e) => {
@@ -1780,11 +2013,19 @@
         light.simLux = 400;
         light.driftAcc = 0;
 
+        accel.pointer = 0x00;
+        accel.power = false;
+        accel.simX = 0;
+        accel.simY = 0;
+        accel.simZ = 1000;
+        accel.driftAcc = 0;
+
         resetSim();
         setSpeed(DEFAULTS.speed);
         setPaused(DEFAULTS.paused);
         syncControlsFromState();
         updateByteFieldVisibility();
+        updateControlVisibility();
         updateStatusUI();
       });
 
@@ -1801,12 +2042,14 @@
         luxOverrideCheck.checked = state.luxOverride;
         luxOverrideInput.value = state.luxOverrideValue;
         document.getElementById("luxVal").textContent = Math.round(state.luxOverrideValue);
-        regSelect.value = "0x02";
+        regSelectLight.value = "0x02";
+        regSelectAccel.value = "0x02";
       }
 
       window.addEventListener("resize", resizeCanvas);
       resizeCanvas();
       syncControlsFromState();
+      updateControlVisibility();
       setSpeed(DEFAULTS.speed);
       setPaused(DEFAULTS.paused);
       updateByteFieldVisibility();
