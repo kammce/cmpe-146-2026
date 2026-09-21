@@ -83,13 +83,41 @@
         color: var(--text);
       }
 
-      .layout {
-        display: grid;
-        grid-template-columns: 280px minmax(0, 1fr) 300px;
-        gap: 18px;
+      .wide-panel {
         max-width: 1560px;
-        margin: 0 auto;
+        margin: 0 auto 18px;
+      }
+
+      .lower-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
         align-items: start;
+      }
+
+      @media (max-width: 900px) {
+        .lower-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Devices/Controls flatten into wide flex-wrap strips instead of
+      tall single-column sidebars -- a header forces a line break (via
+      flex-basis: 100%) and the cards after it wrap to fill the width. */
+      .devices-panel,
+      .controls-panel {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        align-content: flex-start;
+        gap: 10px;
+      }
+
+      .devices-panel h2,
+      .controls-panel h2,
+      .devices-panel h3,
+      .controls-panel h3 {
+        flex-basis: 100%;
       }
 
       .panel {
@@ -117,11 +145,11 @@
 
       /* Device boxes */
       .device-box {
+        flex: 1 1 210px;
         background: var(--panel-alt);
         border: 1px solid var(--panel-border);
         border-radius: 8px;
         padding: 10px 12px;
-        margin-bottom: 10px;
       }
 
       .device-title {
@@ -279,6 +307,7 @@
       }
 
       .metric {
+        flex: 1 1 170px;
         display: flex;
         justify-content: space-between;
         align-items: baseline;
@@ -286,7 +315,6 @@
         background: var(--panel-alt);
         border-radius: 6px;
         padding: 8px 10px;
-        margin-bottom: 10px;
         font-size: 0.85rem;
       }
 
@@ -332,7 +360,7 @@
       .canvas-wrap {
         position: relative;
         width: 100%;
-        height: 340px;
+        height: 380px;
       }
 
       canvas {
@@ -384,7 +412,7 @@
       }
 
       .control-group {
-        margin-bottom: 18px;
+        flex: 1 1 230px;
       }
 
       input[type="range"] {
@@ -541,6 +569,7 @@
       }
 
       #resetBtn {
+        flex: 1 1 230px;
         width: 100%;
         background: transparent;
         border: 1px solid var(--red);
@@ -580,9 +609,12 @@
         display: none !important;
       }
 
-      @media (max-width: 1050px) {
-        .layout {
-          grid-template-columns: 1fr;
+      @media (max-width: 640px) {
+        .device-box,
+        .metric,
+        .control-group,
+        #resetBtn {
+          flex-basis: 100%;
         }
       }
     </style>
@@ -633,9 +665,91 @@
       </div>
     </div>
 
-    <div class="layout">
-      <!-- Left: devices + status -->
-      <div class="panel devices-panel">
+    <!-- Full width: logic analyzer -->
+    <div class="panel graph-panel wide-panel">
+        <div class="graph-toolbar">
+          <div class="toolbar-group">
+            <label>SPI Mode</label>
+            <div class="segmented">
+              <button id="mode0" class="active">0</button>
+              <button id="mode1">1</button>
+              <button id="mode2">2</button>
+              <button id="mode3">3</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label>Clock Speed</label>
+            <div class="segmented">
+              <button id="speedLow">Low</button>
+              <button id="speedMedium" class="active">Medium</button>
+              <button id="speedHigh">High</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label>Playback</label>
+            <div class="segmented">
+              <button id="playBtn" class="active">▶ Running</button>
+              <button id="pauseBtn">⏸ Paused</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label
+              >Graph Zoom: <span id="zoomVal">220</span> steps</label
+            >
+            <input
+              type="range"
+              id="zoomRange"
+              min="32"
+              max="400"
+              step="8"
+              value="220"
+            />
+          </div>
+        </div>
+        <div class="desc-text" id="modeDesc" style="text-align: center; margin-bottom: 10px">
+          CPOL=0, CPHA=0 &mdash; clock idles low, data sampled on the rising
+          edge.
+        </div>
+
+        <div class="contention-banner hidden" id="contentionBanner">
+          ⚠ BUS CONTENTION — both chip selects are asserted, CIPO is
+          electrically undefined
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="busCanvas"></canvas>
+        </div>
+        <div class="legend">
+          <span
+            ><span class="swatch" style="background: var(--orange)"></span>CS
+            Temp (LOW = asserted)</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--red)"></span>CS
+            GPIO (LOW = asserted)</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--dim)"></span
+            >SCK</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--cyan)"></span
+            >COPI</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--green)"></span
+            >CIPO</span
+          >
+        </div>
+        <div class="status-line" id="busStatus">Idle</div>
+    </div>
+
+    <!-- Devices + Controls side by side -->
+    <div class="lower-row wide-panel">
+    <div class="panel devices-panel">
         <h2>Devices</h2>
         <div class="device-box">
           <div class="device-title">Controller</div>
@@ -693,84 +807,9 @@
             >0x00</span
           >
         </div>
-      </div>
+    </div>
 
-      <!-- Center: logic analyzer -->
-      <div class="panel graph-panel">
-        <div class="graph-toolbar">
-          <div class="toolbar-group">
-            <label>SPI Mode</label>
-            <div class="segmented">
-              <button id="mode0" class="active">0</button>
-              <button id="mode1">1</button>
-              <button id="mode2">2</button>
-              <button id="mode3">3</button>
-            </div>
-          </div>
-
-          <div class="toolbar-group">
-            <label>Clock Speed</label>
-            <div class="segmented">
-              <button id="speedLow">Low</button>
-              <button id="speedMedium" class="active">Medium</button>
-              <button id="speedHigh">High</button>
-            </div>
-          </div>
-
-          <div class="toolbar-group">
-            <label
-              >Graph Zoom: <span id="zoomVal">220</span> steps</label
-            >
-            <input
-              type="range"
-              id="zoomRange"
-              min="32"
-              max="400"
-              step="8"
-              value="220"
-            />
-          </div>
-        </div>
-        <div class="desc-text" id="modeDesc" style="text-align: center; margin-bottom: 10px">
-          CPOL=0, CPHA=0 &mdash; clock idles low, data sampled on the rising
-          edge.
-        </div>
-
-        <div class="contention-banner hidden" id="contentionBanner">
-          ⚠ BUS CONTENTION — both chip selects are asserted, CIPO is
-          electrically undefined
-        </div>
-
-        <div class="canvas-wrap">
-          <canvas id="busCanvas"></canvas>
-        </div>
-        <div class="legend">
-          <span
-            ><span class="swatch" style="background: var(--orange)"></span>CS
-            Temp (LOW = asserted)</span
-          >
-          <span
-            ><span class="swatch" style="background: var(--red)"></span>CS
-            GPIO (LOW = asserted)</span
-          >
-          <span
-            ><span class="swatch" style="background: var(--dim)"></span
-            >SCK</span
-          >
-          <span
-            ><span class="swatch" style="background: var(--cyan)"></span
-            >COPI</span
-          >
-          <span
-            ><span class="swatch" style="background: var(--green)"></span
-            >CIPO</span
-          >
-        </div>
-        <div class="status-line" id="busStatus">Idle</div>
-      </div>
-
-      <!-- Right: controls -->
-      <div class="panel controls-panel">
+    <div class="panel controls-panel">
         <h2>Controls</h2>
 
         <div class="control-group">
@@ -904,7 +943,7 @@
         </div>
 
         <button id="resetBtn">Reset View</button>
-      </div>
+    </div>
     </div>
 
     <div class="how-it-works">
@@ -997,6 +1036,8 @@
       const speedLowBtn = document.getElementById("speedLow");
       const speedMediumBtn = document.getElementById("speedMedium");
       const speedHighBtn = document.getElementById("speedHigh");
+      const playBtn = document.getElementById("playBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
       const csTempBtn = document.getElementById("csTempBtn");
       const csGpioBtn = document.getElementById("csGpioBtn");
       const presetSelect = document.getElementById("presetSelect");
@@ -1096,6 +1137,7 @@
         writeLength: 2,
         writeBytes: [0xc1, 0xa5, 0x00, 0x00],
         readLength: 2,
+        paused: false,
         zoomSteps: parseInt(zoomRange.value, 10),
         tempOverride: tempOverrideCheck.checked,
         tempOverrideValue: parseFloat(tempOverrideInput.value),
@@ -1111,6 +1153,7 @@
         writeLength: DEFAULTS.writeLength,
         writeBytes: DEFAULTS.writeBytes.slice(),
         readLength: DEFAULTS.readLength,
+        paused: DEFAULTS.paused,
         zoomSteps: DEFAULTS.zoomSteps,
         tempOverride: DEFAULTS.tempOverride,
         tempOverrideValue: DEFAULTS.tempOverrideValue,
@@ -1889,6 +1932,7 @@
         lastTs = ts;
         dt = Math.min(dt, 100); // clamp jumps from a backgrounded tab
 
+        if (!state.paused) {
         stepDrift(dt);
 
         bus.stepAcc += dt;
@@ -1939,6 +1983,7 @@
             sim.bitLabels.shift();
           }
         }
+        } // !state.paused
 
         drawBusGraph();
         updateSchematic();
@@ -1995,6 +2040,18 @@
       speedLowBtn.addEventListener("click", () => setSpeed("low"));
       speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
       speedHighBtn.addEventListener("click", () => setSpeed("high"));
+
+      // Pausing freezes the whole simulation exactly where it is -- the
+      // clock stops advancing, the bus queue stops draining, and drift
+      // stops -- so a mid-transfer waveform can be studied, then resumed
+      // right where it left off.
+      function setPaused(paused) {
+        state.paused = paused;
+        playBtn.classList.toggle("active", !paused);
+        pauseBtn.classList.toggle("active", paused);
+      }
+      playBtn.addEventListener("click", () => setPaused(false));
+      pauseBtn.addEventListener("click", () => setPaused(true));
 
       csTempBtn.addEventListener("click", toggleCsTemp);
       csGpioBtn.addEventListener("click", toggleCsGpio);
@@ -2054,6 +2111,7 @@
         state.writeLength = DEFAULTS.writeLength;
         state.writeBytes = DEFAULTS.writeBytes.slice();
         state.readLength = DEFAULTS.readLength;
+        state.paused = DEFAULTS.paused;
         state.zoomSteps = DEFAULTS.zoomSteps;
         state.tempOverride = DEFAULTS.tempOverride;
         state.tempOverrideValue = DEFAULTS.tempOverrideValue;
@@ -2077,6 +2135,7 @@
         resetSim();
         setSpiMode(DEFAULTS.spiMode);
         setSpeed(DEFAULTS.speed);
+        setPaused(DEFAULTS.paused);
         syncControlsFromState();
         updateByteFieldVisibility();
         updateStatusUI();
@@ -2105,6 +2164,7 @@
       syncControlsFromState();
       setSpiMode(DEFAULTS.spiMode);
       setSpeed(DEFAULTS.speed);
+      setPaused(DEFAULTS.paused);
       updateByteFieldVisibility();
       updateStatusUI();
       requestAnimationFrame(draw);

@@ -1,0 +1,1817 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>I2C Bus Visualizer</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-alt: #0e1424;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --green: #86efac;
+        --orange: #fb923c;
+        --red: #f87171;
+        --magenta: #c084fc;
+        --yellow: #fde047;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+        --canvas-bg: #050810;
+        --grid-line: #16203a;
+        --grid-line-strong: #3a4468;
+        --byte-guide: rgba(229, 233, 245, 0.25);
+        --how-bg: #1a1206;
+        --how-border: #4a3418;
+        --led-off-bg: #232b47;
+        --led-off-border: #333e5e;
+      }
+
+      :root[data-theme="light"] {
+        --bg: #f3f4f9;
+        --panel: #ffffff;
+        --panel-alt: #eef0f8;
+        --panel-border: #ccd1e3;
+        --cyan: #0e7490;
+        --green: #15803d;
+        --orange: #c2410c;
+        --red: #b91c1c;
+        --magenta: #7c3aed;
+        --yellow: #a16207;
+        --text: #1b2033;
+        --dim: #545e7c;
+        --canvas-bg: #ffffff;
+        --grid-line: #e1e4f0;
+        --grid-line-strong: #b6bcd8;
+        --byte-guide: rgba(27, 32, 51, 0.16);
+        --how-bg: #fff4e3;
+        --how-border: #e3ab5f;
+        --led-off-bg: #e2e5f1;
+        --led-off-border: #c2c8de;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 24px;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--green);
+        font-size: 2rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: var(--dim);
+        margin-bottom: 24px;
+      }
+
+      .theme-toggle {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 20;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        color: var(--text);
+      }
+
+      .wide-panel {
+        max-width: 1560px;
+        margin: 0 auto 18px;
+      }
+
+      .lower-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+
+      @media (max-width: 900px) {
+        .lower-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Devices/Controls flatten into wide flex-wrap strips instead of
+      tall single-column sidebars -- a header forces a line break (via
+      flex-basis: 100%) and the cards after it wrap to fill the width. */
+      .devices-panel,
+      .controls-panel {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        align-content: flex-start;
+        gap: 10px;
+      }
+
+      .devices-panel h2,
+      .controls-panel h2,
+      .devices-panel h3,
+      .controls-panel h3 {
+        flex-basis: 100%;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .panel h3 {
+        font-size: 0.85rem;
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0 0 10px;
+      }
+
+      /* Device boxes */
+      .device-box {
+        flex: 1 1 210px;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        padding: 10px 12px;
+      }
+
+      .device-title {
+        color: var(--cyan);
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+
+      .device-sub {
+        color: var(--dim);
+        font-size: 0.78rem;
+        margin-top: 3px;
+      }
+
+      /* MCU <-> peripheral schematic */
+      .schematic-panel {
+        max-width: 1560px;
+        margin: 0 auto 18px;
+      }
+
+      .schematic {
+        display: flex;
+        align-items: stretch;
+        gap: 24px;
+      }
+
+      .chip-box {
+        flex: 0 0 150px;
+        background: var(--panel-alt);
+        border: 2px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px 10px;
+        text-align: center;
+        transition:
+          border-color 0.15s linear,
+          box-shadow 0.15s linear;
+      }
+
+      .chip-box.active {
+        border-color: var(--cyan);
+        box-shadow: 0 0 10px 1px rgba(34, 211, 238, 0.35);
+      }
+
+      .chip-box.stub {
+        opacity: 0.6;
+        border-style: dashed;
+      }
+
+      .chip-box .chip-title {
+        color: var(--cyan);
+        font-weight: bold;
+        font-size: 1rem;
+      }
+
+      .chip-box .chip-sub {
+        color: var(--dim);
+        font-size: 0.72rem;
+        margin-top: 4px;
+      }
+
+      .chip-stack {
+        flex: 0 0 170px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .chip-stack .chip-box {
+        flex: 1;
+      }
+
+      .wire-group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        gap: 14px;
+        padding: 6px 0;
+      }
+
+      .wire-track {
+        position: relative;
+        height: 4px;
+        background: var(--led-off-bg);
+        border-radius: 2px;
+        transition:
+          background-color 0.1s linear,
+          box-shadow 0.1s linear;
+      }
+
+      .wire-track .wire-tag {
+        position: absolute;
+        top: -17px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.72rem;
+        white-space: nowrap;
+        color: var(--dim);
+      }
+
+      .wire-track.lit {
+        background-color: currentColor;
+        box-shadow: 0 0 10px 3px currentColor;
+      }
+
+      .wire-track.lit .wire-tag {
+        color: currentColor;
+      }
+
+      @keyframes alert-pulse {
+        0%,
+        100% {
+          opacity: 0.3;
+          box-shadow: 0 0 4px 1px var(--red);
+        }
+        50% {
+          opacity: 1;
+          box-shadow: 0 0 16px 4px var(--red);
+        }
+      }
+
+      .alert-banner {
+        text-align: center;
+        font-weight: bold;
+        font-size: 0.85rem;
+        color: var(--red);
+        background: var(--panel-alt);
+        border: 1px solid var(--red);
+        border-radius: 6px;
+        padding: 6px 10px;
+        margin-bottom: 8px;
+        animation: alert-pulse 0.7s ease-in-out infinite;
+      }
+
+      .meter {
+        height: 8px;
+        background: var(--led-off-bg);
+        border: 1px solid var(--led-off-border);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 8px;
+      }
+
+      .meter-fill {
+        height: 100%;
+        width: 0%;
+        background: var(--yellow);
+        transition: width 0.15s linear;
+      }
+
+      .metric {
+        flex: 1 1 170px;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-left: 3px solid var(--cyan);
+        background: var(--panel-alt);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 0.85rem;
+      }
+
+      .metric .val {
+        color: var(--cyan);
+        font-weight: bold;
+      }
+
+      /* Graph panel */
+      .graph-panel {
+        padding: 16px;
+      }
+
+      .graph-toolbar {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+
+      .toolbar-group {
+        flex: 1;
+        min-width: 150px;
+      }
+
+      .toolbar-group label {
+        font-size: 0.8rem;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        width: 100%;
+        height: 340px;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--canvas-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        display: block;
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--dim);
+        flex-wrap: wrap;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 3px;
+        display: inline-block;
+      }
+
+      .status-line {
+        text-align: center;
+        font-size: 0.8rem;
+        color: var(--dim);
+        margin-top: 8px;
+      }
+
+      /* Controls panel */
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+
+      .control-group {
+        flex: 1 1 230px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--cyan);
+        cursor: pointer;
+      }
+
+      select {
+        width: 100%;
+        background: var(--panel-alt);
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 6px;
+        font-family: inherit;
+      }
+
+      .segmented {
+        display: flex;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .segmented button {
+        flex: 1;
+        background: var(--panel-alt);
+        border: none;
+        color: var(--dim);
+        border-radius: 0;
+        padding: 8px 4px;
+        font-family: inherit;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      .segmented button.active {
+        background: var(--cyan);
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .desc-text {
+        font-size: 0.75rem;
+        color: var(--dim);
+        line-height: 1.4;
+      }
+
+      .byte-row {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .byte-field {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 2px 6px;
+      }
+
+      .byte-field.addr-field {
+        flex: 0 0 90px;
+      }
+
+      .byte-field .prefix {
+        color: var(--dim);
+        font-size: 0.8rem;
+      }
+
+      .byte-field input {
+        width: 100%;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-family: inherit;
+        font-size: 0.85rem;
+        padding: 6px 2px;
+        text-transform: uppercase;
+      }
+
+      .byte-field input:focus {
+        outline: none;
+      }
+
+      .byte-field.inactive {
+        opacity: 0.35;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      #writeBtn,
+      #readBtn {
+        width: 100%;
+        background: linear-gradient(135deg, #22d3ee, #3b82f6);
+        border: none;
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      #readRegBtn {
+        width: 100%;
+        background: linear-gradient(135deg, #c084fc, #fb923c);
+        border: none;
+        color: #1a0f2a;
+        font-weight: bold;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        margin-top: 8px;
+      }
+
+      #resetBtn {
+        flex: 1 1 230px;
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--red);
+        color: var(--red);
+      }
+
+      #resetBtn:hover {
+        background: rgba(248, 113, 113, 0.15);
+      }
+
+      .how-it-works {
+        max-width: 950px;
+        margin: 18px auto 0;
+        padding: 14px 18px;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        background: var(--how-bg);
+        border: 1px solid var(--how-border);
+        border-radius: 6px;
+      }
+
+      .how-it-works .label {
+        color: var(--orange);
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+      }
+
+      .how-it-works p {
+        margin: 0 0 10px;
+      }
+
+      .how-it-works p:last-child {
+        margin-bottom: 0;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      @media (max-width: 640px) {
+        .device-box,
+        .metric,
+        .control-group,
+        #resetBtn {
+          flex-basis: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <button id="themeToggleBtn" class="theme-toggle">☀️ Light Theme</button>
+    <h1>I2C Bus Visualizer</h1>
+    <div class="subtitle">
+      Controller &harr; two devices on one shared 2-wire bus &mdash; no
+      per-device select line, just a 7-bit address and an ACK/NACK bit
+    </div>
+
+    <div class="panel schematic-panel">
+      <div class="schematic">
+        <div class="chip-box">
+          <div class="chip-title">MCU</div>
+          <div class="chip-sub">Controller</div>
+        </div>
+        <div class="wire-group">
+          <div class="wire-track" id="wireScl" style="color: var(--dim)">
+            <span class="wire-tag">SCL &rarr; (shared, pulled up)</span>
+          </div>
+          <div class="wire-track" id="wireSda" style="color: var(--cyan)">
+            <span class="wire-tag">SDA &harr; (shared, pulled up)</span>
+          </div>
+        </div>
+        <div class="chip-stack">
+          <div class="chip-box" id="chipLight">
+            <div class="chip-title">Light Sensor</div>
+            <div class="chip-sub">addr 0x23</div>
+            <div class="meter"><div class="meter-fill" id="schematicLuxMeter"></div></div>
+          </div>
+          <div class="chip-box stub" id="chipAccel">
+            <div class="chip-title">Accelerometer</div>
+            <div class="chip-sub">addr 0x68 &mdash; not implemented</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full width: logic analyzer -->
+    <div class="panel graph-panel wide-panel">
+        <div class="graph-toolbar">
+          <div class="toolbar-group">
+            <label>Bus Speed</label>
+            <div class="segmented">
+              <button id="speedStandard" class="active">100 kHz</button>
+              <button id="speedFast">400 kHz</button>
+              <button id="speedFastPlus">1 MHz</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label>Playback</label>
+            <div class="segmented">
+              <button id="playBtn" class="active">▶ Running</button>
+              <button id="pauseBtn">⏸ Paused</button>
+            </div>
+          </div>
+
+          <div class="toolbar-group">
+            <label
+              >Graph Zoom: <span id="zoomVal">180</span> steps</label
+            >
+            <input
+              type="range"
+              id="zoomRange"
+              min="32"
+              max="360"
+              step="8"
+              value="180"
+            />
+          </div>
+        </div>
+        <div class="desc-text" style="text-align: center; margin-bottom: 10px">
+          SCL idles HIGH; SDA must stay stable while SCL is high (that
+          stability is what makes a SDA transition <em>during</em> SCL high
+          special: START and STOP conditions).
+        </div>
+
+        <div class="alert-banner hidden" id="nackBanner">
+          ⚠ NACK — no device on the bus acknowledged that address
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="busCanvas"></canvas>
+        </div>
+        <div class="legend">
+          <span
+            ><span class="swatch" style="background: var(--dim)"></span
+            >SCL</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--cyan)"></span
+            >SDA</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--green)"></span
+            >ACK</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--red)"></span
+            >NACK</span
+          >
+          <span
+            ><span class="swatch" style="background: var(--magenta)"></span
+            >START / STOP</span
+          >
+        </div>
+        <div class="status-line" id="busStatus">Idle</div>
+    </div>
+
+    <!-- Devices + Controls side by side -->
+    <div class="lower-row wide-panel">
+    <div class="panel devices-panel">
+        <h2>Devices</h2>
+        <div class="device-box">
+          <div class="device-title">Controller</div>
+          <div class="device-sub">Drives SCL, and SDA during writes</div>
+        </div>
+
+        <div class="device-box">
+          <div class="device-title">Light Sensor (0x23)</div>
+          <div class="device-sub" id="lightStatus">Idle</div>
+          <div class="meter"><div class="meter-fill" id="panelLuxMeter"></div></div>
+        </div>
+
+        <div class="device-box">
+          <div class="device-title">Accelerometer (0x68)</div>
+          <div class="device-sub">
+            Not implemented in this visualizer &mdash; any transaction
+            addressed to 0x68 will NACK, just like a missing or
+            wrong-address device on a real bus.
+          </div>
+        </div>
+
+        <h2 style="margin-top: 4px">Status</h2>
+        <div class="metric">
+          <span>Bus Speed</span><span class="val" id="mSpeed">100 kHz</span>
+        </div>
+        <div class="metric">
+          <span>Last Address</span><span class="val" id="mLastAddr">--</span>
+        </div>
+        <div class="metric">
+          <span>Last Write</span><span class="val" id="mLastWrite">--</span>
+        </div>
+        <div class="metric">
+          <span>Last Read</span><span class="val" id="mLastRead">--</span>
+        </div>
+        <div class="metric">
+          <span>Register Pointer</span
+          ><span class="val" id="mPointer">0x00</span>
+        </div>
+        <div class="metric">
+          <span>Power State</span><span class="val" id="mPower">OFF</span>
+        </div>
+        <div class="metric" style="border-left-color: var(--yellow)">
+          <span>Last Decoded Lux</span
+          ><span class="val" id="mDecodedLux" style="color: var(--yellow)"
+            >--</span
+          >
+        </div>
+        <div class="metric">
+          <span>Simulated Lux</span
+          ><span class="val" id="mSimLux">400 lx</span>
+        </div>
+    </div>
+
+    <div class="panel controls-panel">
+        <h2>Controls</h2>
+
+        <div class="control-group">
+          <label for="addrInput">Target Address (7-bit)</label>
+          <div class="byte-row">
+            <div class="byte-field addr-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="addrInput" maxlength="2" value="23" />
+            </div>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label for="presetSelect">Quick Fill</label>
+          <select id="presetSelect">
+            <option value="">Choose a command…</option>
+            <option value="lightPtrWhoAmI">
+              Light Sensor: Set Pointer → WHO_AM_I (0x00)
+            </option>
+            <option value="lightPtrConfig">
+              Light Sensor: Set Pointer → CONFIG (0x01)
+            </option>
+            <option value="lightPtrLux">
+              Light Sensor: Set Pointer → LUX (0x02)
+            </option>
+            <option value="lightPowerOn">
+              Light Sensor: Write CONFIG = 0x01 (power on)
+            </option>
+            <option value="lightPowerOff">
+              Light Sensor: Write CONFIG = 0x00 (power off)
+            </option>
+            <option value="accelProbe">
+              Accelerometer: Probe 0x68 (expect NACK)
+            </option>
+            <option value="noDevice">
+              No Device: Probe 0x10 (expect NACK)
+            </option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="writeLenSelect">Write Length</label>
+          <select id="writeLenSelect">
+            <option value="1" selected>1 byte</option>
+            <option value="2">2 bytes</option>
+            <option value="3">3 bytes</option>
+            <option value="4">4 bytes</option>
+          </select>
+          <div class="byte-row" style="margin-top: 8px">
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte0" maxlength="2" value="00" />
+            </div>
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte1" maxlength="2" value="00" />
+            </div>
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte2" maxlength="2" value="00" />
+            </div>
+            <div class="byte-field">
+              <span class="prefix">0x</span>
+              <input type="text" id="byte3" maxlength="2" value="00" />
+            </div>
+          </div>
+          <div class="desc-text" style="margin-bottom: 8px">
+            First byte sets the light sensor's register pointer; any bytes
+            after that write sequentially from there.
+          </div>
+          <button id="writeBtn">Write</button>
+        </div>
+
+        <div class="control-group">
+          <label>Read Length: <span id="readLenVal">2</span> bytes</label>
+          <input
+            type="range"
+            id="readLenRange"
+            min="1"
+            max="4"
+            step="1"
+            value="2"
+          />
+          <div class="desc-text" style="margin-bottom: 8px">
+            Reads from wherever the pointer was last left (it persists
+            across transactions).
+          </div>
+          <button id="readBtn">Read</button>
+        </div>
+
+        <div class="control-group">
+          <h3>Light Sensor</h3>
+          <label for="regSelect">Read a Register (repeated START)</label>
+          <select id="regSelect">
+            <option value="0x00">WHO_AM_I (0x00, 1 byte)</option>
+            <option value="0x01">CONFIG (0x01, 1 byte)</option>
+            <option value="0x02" selected>LUX (0x02, 2 bytes)</option>
+          </select>
+          <button id="readRegBtn" style="margin-top: 8px">
+            Read Register (Write ptr &rarr; Sr &rarr; Read)
+          </button>
+
+          <label style="margin-top: 14px"
+            >Simulated Lux: <span id="luxVal">400</span> lx</label
+          >
+          <input
+            type="number"
+            id="luxOverrideInput"
+            step="1"
+            min="0"
+            max="1200"
+            value="400"
+          />
+          <div class="checkbox-row">
+            <input type="checkbox" id="luxOverrideCheck" />
+            <label for="luxOverrideCheck" style="margin: 0"
+              >Override (freeze at this value)</label
+            >
+          </div>
+        </div>
+
+        <button id="resetBtn">Reset View</button>
+    </div>
+    </div>
+
+    <div class="how-it-works">
+      <div class="label">How it works</div>
+      <p>
+        <strong>One bus, no chip select.</strong> Unlike SPI, both devices
+        share just two wires (SCL and SDA, both pulled up to idle HIGH) and
+        there is no per-device select line at all. Every transaction starts
+        with a START condition (SDA falls while SCL is high), then the
+        controller clocks out a byte containing a 7-bit address plus a
+        read/write bit. Only the device whose address matches drives SDA
+        low on the very next clock (an ACK) &mdash; everyone else leaves it
+        alone, and the pull-up keeps it high (a NACK). That single ACK/NACK
+        bit is what "chip select" gets replaced with.
+      </p>
+      <p>
+        <strong>Light Sensor (0x23).</strong> A tiny register map: 0x00
+        WHO_AM_I (read-only, always 0x53), 0x01 CONFIG (read/write, bit0 =
+        power), 0x02/0x03 LUX_H/LUX_L (read-only, unsigned 16-bit, 1
+        lux/LSB, MSB first). Writing follows the common convention real I2C
+        sensors use: the first byte you Write sets an internal register
+        pointer, and any further bytes in that same Write land in
+        consecutive registers from there. The pointer is real, persistent
+        state &mdash; it stays put after the bus goes idle, so a plain Read
+        later picks up wherever it was left, exactly like the datasheet for
+        a real sensor would describe. The sensor reads back all zeros while
+        CONFIG's power bit is off, so Write CONFIG=0x01 before expecting a
+        real LUX value.
+      </p>
+      <p>
+        <strong>Read Register (repeated START).</strong> The most common
+        real-world I2C pattern is one unbroken transaction: START, address
+        + write, the register pointer byte, a <em>repeated</em> START
+        (no STOP in between — the bus is never released), address + read,
+        then the data bytes. That's exactly what this button scripts as a
+        single queued waveform, letting you watch the "Sr" marker and the
+        direction flip from W to R without the bus ever going idle.
+      </p>
+      <p>
+        <strong>Accelerometer (0x68) &mdash; not implemented yet.</strong>
+        It's drawn on the schematic to show it shares the exact same two
+        wires as the light sensor, but this first pass doesn't give it any
+        register logic. Addressing 0x68 (or anything else nobody owns,
+        like the "No Device" preset at 0x10) always ends in a NACK right
+        after the address byte &mdash; a very real scenario on an actual
+        bus when a part is missing, unpowered, or you simply typed the
+        wrong address.
+      </p>
+      <p>
+        Each data byte the controller <em>reads</em> gets ACKed by the
+        controller itself to ask for more, except the very last one, which
+        it deliberately NACKs to tell the slave to stop and release the
+        bus for the STOP condition &mdash; watch for that on the final
+        byte of every Read.
+      </p>
+    </div>
+
+    <script>
+      // ---- DOM refs ----
+      const busCanvas = document.getElementById("busCanvas");
+      const busCtx = busCanvas.getContext("2d");
+
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const speedStandardBtn = document.getElementById("speedStandard");
+      const speedFastBtn = document.getElementById("speedFast");
+      const speedFastPlusBtn = document.getElementById("speedFastPlus");
+      const playBtn = document.getElementById("playBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const addrInput = document.getElementById("addrInput");
+      const presetSelect = document.getElementById("presetSelect");
+      const writeLenSelect = document.getElementById("writeLenSelect");
+      const byteInputs = [
+        document.getElementById("byte0"),
+        document.getElementById("byte1"),
+        document.getElementById("byte2"),
+        document.getElementById("byte3"),
+      ];
+      const writeBtn = document.getElementById("writeBtn");
+      const zoomRange = document.getElementById("zoomRange");
+      const readLenRange = document.getElementById("readLenRange");
+      const readBtn = document.getElementById("readBtn");
+      const regSelect = document.getElementById("regSelect");
+      const readRegBtn = document.getElementById("readRegBtn");
+      const luxOverrideInput = document.getElementById("luxOverrideInput");
+      const luxOverrideCheck = document.getElementById("luxOverrideCheck");
+      const resetBtn = document.getElementById("resetBtn");
+      const nackBanner = document.getElementById("nackBanner");
+
+      // ---- Theme ----
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        themeToggleBtn.textContent = theme === "light" ? "🌙 Dark Theme" : "☀️ Light Theme";
+      }
+      themeToggleBtn.addEventListener("click", () => {
+        const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+        applyTheme(next);
+        try {
+          localStorage.setItem("i2cVizTheme", next);
+        } catch (e) {
+          // Private browsing / blocked storage -- theme just won't persist.
+        }
+      });
+      (function loadInitialTheme() {
+        let saved = null;
+        try {
+          saved = localStorage.getItem("i2cVizTheme");
+        } catch (e) {
+          // Ignore -- fall back to the default theme below.
+        }
+        applyTheme(saved === "light" ? "light" : "dark");
+      })();
+
+      // Manual: milliseconds per half clock-period (two of these = one bit)
+      // for each Bus Speed setting -- lower is faster. These are for
+      // animation pacing, not literal microsecond-accurate I2C timing.
+      const HALF_BIT_MS = { standard: 220, fast: 90, fastplus: 28 };
+      const SPEED_LABEL = { standard: "100 kHz", fast: "400 kHz", fastplus: "1 MHz" };
+
+      // Manual: ambient light drift -- every DRIFT_INTERVAL_MS, nudge the
+      // simulated reading by up to +/- DRIFT_STEP lux, clamped to a
+      // plausible indoor range.
+      const DRIFT_INTERVAL_MS = 450;
+      const LUX_DRIFT_STEP = 8;
+      const LUX_MIN = 0;
+      const LUX_MAX = 1200;
+
+      // Bus addresses.
+      const LIGHT_ADDR = 0x23;
+      const ACCEL_ADDR = 0x68; // present on the schematic, not implemented
+
+      // Light sensor register map.
+      const REG_WHO_AM_I = 0x00;
+      const REG_CONFIG = 0x01;
+      const REG_LUX_H = 0x02;
+      const REG_LUX_L = 0x03;
+      const WHO_AM_I_VALUE = 0x53;
+      const REG_READ_LEN = { 0x00: 1, 0x01: 1, 0x02: 2 };
+
+      const PRESETS = {
+        lightPtrWhoAmI: { address: LIGHT_ADDR, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+        lightPtrConfig: { address: LIGHT_ADDR, writeBytes: [0x01, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+        lightPtrLux: { address: LIGHT_ADDR, writeBytes: [0x02, 0x00, 0x00, 0x00], writeLength: 1, readLength: 2 },
+        lightPowerOn: { address: LIGHT_ADDR, writeBytes: [0x01, 0x01, 0x00, 0x00], writeLength: 2, readLength: 1 },
+        lightPowerOff: { address: LIGHT_ADDR, writeBytes: [0x01, 0x00, 0x00, 0x00], writeLength: 2, readLength: 1 },
+        accelProbe: { address: ACCEL_ADDR, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+        noDevice: { address: 0x10, writeBytes: [0x00, 0x00, 0x00, 0x00], writeLength: 1, readLength: 1 },
+      };
+
+      const DEFAULTS = {
+        speed: "standard",
+        address: LIGHT_ADDR,
+        writeLength: 1,
+        writeBytes: [0x02, 0x00, 0x00, 0x00],
+        readLength: 2,
+        paused: false,
+        zoomSteps: parseInt(zoomRange.value, 10),
+        luxOverride: luxOverrideCheck.checked,
+        luxOverrideValue: parseFloat(luxOverrideInput.value),
+      };
+
+      const state = {
+        speed: DEFAULTS.speed,
+        address: DEFAULTS.address,
+        writeLength: DEFAULTS.writeLength,
+        writeBytes: DEFAULTS.writeBytes.slice(),
+        readLength: DEFAULTS.readLength,
+        paused: DEFAULTS.paused,
+        zoomSteps: DEFAULTS.zoomSteps,
+        luxOverride: DEFAULTS.luxOverride,
+        luxOverrideValue: DEFAULTS.luxOverrideValue,
+      };
+
+      // The light sensor's register pointer is real persistent state -- it
+      // survives STOP conditions and stays put until the next Write
+      // changes it, exactly like a real sensor's datasheet would describe.
+      const light = {
+        pointer: 0x00,
+        power: false,
+        simLux: 400,
+        driftAcc: 0,
+      };
+
+      const bus = {
+        queue: [], // half-steps waiting to be played into history
+        lastScl: 1,
+        lastSda: 1,
+        stepAcc: 0,
+        lastAddr: null,
+        lastAddrAck: null, // null = no transaction yet
+        lastWriteBytes: null,
+        lastReadBytes: null,
+        lastDecodedLux: null,
+        // Runs once the transfer just pushed onto `queue` has fully
+        // drained -- this is where device state actually changes (the
+        // register pointer, CONFIG power bit, decoded lux), so nothing
+        // updates until the bytes have really finished clocking across
+        // the wire instead of the instant a button is clicked.
+        pendingCompletion: null,
+      };
+
+      const sim = {
+        tickIndex: 0,
+        history: [], // { tick, scl, sda }
+        byteLabels: [], // { startTick, value, kind: 'addr-w'|'addr-r'|'data' }
+        bitLabels: [], // { startTick, value }
+        ackLabels: [], // { startTick, ack }
+        frameMarks: [], // { tick, kind: 'start'|'repeated-start'|'stop' }
+      };
+
+      function resetSim() {
+        sim.tickIndex = 0;
+        sim.history = [];
+        sim.byteLabels = [];
+        sim.bitLabels = [];
+        sim.ackLabels = [];
+        sim.frameMarks = [];
+        bus.queue = [];
+        bus.lastScl = 1;
+        bus.lastSda = 1;
+        bus.stepAcc = 0;
+        bus.lastAddr = null;
+        bus.lastAddrAck = null;
+        bus.lastWriteBytes = null;
+        bus.lastReadBytes = null;
+        bus.lastDecodedLux = null;
+        bus.pendingCompletion = null;
+      }
+
+      function toHexByte(n) {
+        return n.toString(16).toUpperCase().padStart(2, "0");
+      }
+
+      function bytesToHexList(bytes) {
+        return bytes.map((b) => "0x" + toHexByte(b)).join(", ");
+      }
+
+      // ---- Lux encode/decode: unsigned 16-bit, 1 lux/LSB, MSB first
+      function encodeLux16(lux) {
+        let raw = Math.round(lux);
+        raw = Math.max(0, Math.min(65535, raw));
+        return { msb: (raw >> 8) & 0xff, lsb: raw & 0xff };
+      }
+
+      function decodeLux16(msb, lsb) {
+        return ((msb << 8) | lsb) & 0xffff;
+      }
+
+      function currentLux() {
+        return state.luxOverride ? state.luxOverrideValue : light.simLux;
+      }
+
+      // ---- Light sensor register access ----
+      function lightReadByte(reg) {
+        if (reg === REG_WHO_AM_I) return WHO_AM_I_VALUE;
+        if (reg === REG_CONFIG) return light.power ? 0x01 : 0x00;
+        if (reg === REG_LUX_H) return light.power ? encodeLux16(currentLux()).msb : 0x00;
+        if (reg === REG_LUX_L) return light.power ? encodeLux16(currentLux()).lsb : 0x00;
+        return 0x00; // past the register map -- real hardware just returns 0
+      }
+
+      function lightWriteByte(reg, value) {
+        if (reg === REG_CONFIG) light.power = (value & 0x01) === 1;
+        // Every other register is read-only -- the device still ACKs the
+        // byte (it's on the wire either way) but silently discards it,
+        // exactly like real hardware.
+      }
+
+      function addressedDevice(addr) {
+        return addr === LIGHT_ADDR ? "light" : null; // 0x68 and anything
+        // else has nobody listening in this simulator -- NACK.
+      }
+
+      // ---- Builds the half-step (SCL/SDA) waveform for one or more I2C
+      // framing segments: start / repeated-start / addr / data / stop.
+      // Two half-steps per bit (SCL low with SDA settling, SCL high with
+      // SDA held stable) mirrors SPI's CPHA=0 shape -- the rising edge is
+      // where a receiver would sample.
+      function pushByteWithAck(queue, byteVal, ack, tag) {
+        for (let bit = 7; bit >= 0; bit--) {
+          const b = (byteVal >> bit) & 1;
+          const step0 = { scl: 0, sda: b };
+          const step1 = { scl: 1, sda: b };
+          step0.bitStart = true;
+          step0.bitValue = b;
+          if (bit === 7) {
+            step0.byteStart = true;
+            step0.byteValue = byteVal;
+            step0.byteKind = tag.kind;
+          }
+          queue.push(step0, step1);
+        }
+        const ackBit = ack ? 0 : 1; // ACK = SDA driven low; NACK = released high
+        queue.push(
+          { scl: 0, sda: ackBit, ackStart: true, ackValue: ack },
+          { scl: 1, sda: ackBit },
+        );
+      }
+
+      function buildI2CQueue(segments) {
+        const queue = [];
+        for (const seg of segments) {
+          if (seg.type === "start") {
+            queue.push({ scl: 1, sda: 1 }); // idle gap for visual breathing room
+            queue.push({ scl: 1, sda: 0, startEdge: true });
+          } else if (seg.type === "repeated-start") {
+            queue.push({ scl: 0, sda: 1 });
+            queue.push({ scl: 1, sda: 1 });
+            queue.push({ scl: 1, sda: 0, startEdge: true, repeated: true });
+          } else if (seg.type === "addr") {
+            const byteVal = ((seg.addr & 0x7f) << 1) | (seg.rw & 1);
+            pushByteWithAck(queue, byteVal, seg.ack, { kind: seg.rw ? "addr-r" : "addr-w" });
+          } else if (seg.type === "data") {
+            seg.bytes.forEach((b, i) => pushByteWithAck(queue, b, seg.acks[i], { kind: "data" }));
+          } else if (seg.type === "stop") {
+            queue.push({ scl: 0, sda: 0 });
+            queue.push({ scl: 1, sda: 0 });
+            queue.push({ scl: 1, sda: 1, stopEdge: true });
+          }
+        }
+        return queue;
+      }
+
+      // ---- Write / Read / Read Register actions ----
+      // All three build one self-contained START..STOP (or, for Read
+      // Register, START..repeated-START..STOP) queue up front. Device
+      // state never changes until that queue has actually finished
+      // clocking across the wire -- see bus.pendingCompletion, fired from
+      // the main loop once draining completes.
+      function doWrite() {
+        if (bus.queue.length) return;
+        const addr = state.address & 0x7f;
+        const bytes = state.writeBytes.slice(0, state.writeLength);
+        const dev = addressedDevice(addr);
+        const addrAck = dev !== null;
+        const byteAcks = addrAck ? bytes.map(() => true) : [];
+        const segments = [{ type: "start" }, { type: "addr", addr, rw: 0, ack: addrAck }];
+        if (addrAck) segments.push({ type: "data", bytes, acks: byteAcks });
+        segments.push({ type: "stop" });
+        bus.queue.push(...buildI2CQueue(segments));
+        bus.pendingCompletion = () => {
+          bus.lastAddr = addr;
+          bus.lastAddrAck = addrAck;
+          bus.lastWriteBytes = bytes;
+          if (addrAck && dev === "light" && bytes.length > 0) {
+            light.pointer = bytes[0] & 0xff;
+            for (let i = 1; i < bytes.length; i++) {
+              lightWriteByte(light.pointer, bytes[i]);
+              light.pointer = (light.pointer + 1) & 0xff;
+            }
+          }
+        };
+        updateStatusUI();
+      }
+
+      function doRead() {
+        if (bus.queue.length) return;
+        const addr = state.address & 0x7f;
+        const n = state.readLength;
+        const dev = addressedDevice(addr);
+        const addrAck = dev !== null;
+        let dataBytes = new Array(n).fill(0x00);
+        let byteAcks = new Array(n).fill(false);
+        let startPointer = light.pointer;
+        if (addrAck && dev === "light") {
+          let ptr = light.pointer;
+          for (let i = 0; i < n; i++) {
+            dataBytes[i] = lightReadByte(ptr);
+            ptr = (ptr + 1) & 0xff;
+          }
+          byteAcks = new Array(n).fill(true);
+          if (n > 0) byteAcks[n - 1] = false; // controller NACKs the final byte to end the read
+        }
+        const segments = [{ type: "start" }, { type: "addr", addr, rw: 1, ack: addrAck }];
+        if (addrAck) segments.push({ type: "data", bytes: dataBytes, acks: byteAcks });
+        segments.push({ type: "stop" });
+        bus.queue.push(...buildI2CQueue(segments));
+        bus.pendingCompletion = () => {
+          bus.lastAddr = addr;
+          bus.lastAddrAck = addrAck;
+          bus.lastReadBytes = dataBytes;
+          bus.lastDecodedLux = null;
+          if (addrAck && dev === "light") {
+            light.pointer = (startPointer + n) & 0xff;
+            if (startPointer === REG_LUX_H && n >= 2) {
+              bus.lastDecodedLux = decodeLux16(dataBytes[0], dataBytes[1]);
+            }
+          }
+        };
+        updateStatusUI();
+      }
+
+      // Scripts the classic combined I2C access as ONE unbroken
+      // transaction: write the register pointer, repeated START (no STOP
+      // in between), then read the register's bytes back.
+      function doReadRegister() {
+        if (bus.queue.length) return;
+        const addr = state.address & 0x7f;
+        const reg = parseInt(regSelect.value, 16);
+        const n = REG_READ_LEN[reg] ?? 1;
+        const dev = addressedDevice(addr);
+        const addrAck = dev !== null;
+        let dataBytes = new Array(n).fill(0x00);
+        let byteAcks = new Array(n).fill(false);
+        if (addrAck && dev === "light") {
+          let ptr = reg;
+          for (let i = 0; i < n; i++) {
+            dataBytes[i] = lightReadByte(ptr);
+            ptr = (ptr + 1) & 0xff;
+          }
+          byteAcks = new Array(n).fill(true);
+          if (n > 0) byteAcks[n - 1] = false;
+        }
+        const segments = [{ type: "start" }, { type: "addr", addr, rw: 0, ack: addrAck }];
+        if (addrAck) {
+          segments.push({ type: "data", bytes: [reg], acks: [true] });
+          segments.push({ type: "repeated-start" });
+          segments.push({ type: "addr", addr, rw: 1, ack: addrAck });
+          segments.push({ type: "data", bytes: dataBytes, acks: byteAcks });
+        }
+        segments.push({ type: "stop" });
+        bus.queue.push(...buildI2CQueue(segments));
+        bus.pendingCompletion = () => {
+          bus.lastAddr = addr;
+          bus.lastAddrAck = addrAck;
+          bus.lastWriteBytes = [reg];
+          bus.lastReadBytes = dataBytes;
+          bus.lastDecodedLux = null;
+          if (addrAck && dev === "light") {
+            light.pointer = (reg + n) & 0xff;
+            if (reg === REG_LUX_H && n >= 2) {
+              bus.lastDecodedLux = decodeLux16(dataBytes[0], dataBytes[1]);
+            }
+          }
+        };
+        updateStatusUI();
+      }
+
+      // ---- Quick-fill presets (convenience only) ----
+      function syncByteInputsFromState() {
+        byteInputs.forEach((el, i) => (el.value = toHexByte(state.writeBytes[i])));
+      }
+
+      function applyPreset(key) {
+        const preset = PRESETS[key];
+        if (!preset) return;
+        state.address = preset.address;
+        state.writeLength = preset.writeLength;
+        state.writeBytes = preset.writeBytes.slice();
+        state.readLength = preset.readLength;
+        addrInput.value = toHexByte(state.address);
+        writeLenSelect.value = String(state.writeLength);
+        syncByteInputsFromState();
+        readLenRange.value = state.readLength;
+        document.getElementById("readLenVal").textContent = state.readLength;
+        updateByteFieldVisibility();
+        updateSchematic();
+      }
+
+      presetSelect.addEventListener("change", (e) => {
+        const key = e.target.value;
+        presetSelect.value = "";
+        if (!key || bus.queue.length) return;
+        applyPreset(key);
+      });
+
+      readRegBtn.addEventListener("click", () => {
+        if (bus.queue.length) return;
+        doReadRegister();
+      });
+
+      // ---- UI sync ----
+      function updateByteFieldVisibility() {
+        byteInputs.forEach((el, i) => {
+          el.parentElement.classList.toggle("inactive", i >= state.writeLength);
+        });
+      }
+
+      function updateButtonAvailability() {
+        const busy = bus.queue.length > 0;
+        writeBtn.disabled = busy;
+        readBtn.disabled = busy;
+        readRegBtn.disabled = busy;
+        presetSelect.disabled = busy;
+      }
+
+      function lightStatusText() {
+        const ptrHex = "0x" + toHexByte(light.pointer);
+        const power = light.power ? "ON" : "OFF";
+        if (bus.queue.length) return "Clocking...";
+        return "Power " + power + " — pointer at " + ptrHex;
+      }
+
+      function lastAddrText() {
+        if (bus.lastAddr === null) return "--";
+        const hex = "0x" + toHexByte(bus.lastAddr);
+        if (bus.lastAddrAck === null) return hex;
+        return hex + (bus.lastAddrAck ? " (ACK)" : " (NACK)");
+      }
+
+      function updateStatusUI() {
+        document.getElementById("mSpeed").textContent = SPEED_LABEL[state.speed];
+        document.getElementById("mLastAddr").textContent = lastAddrText();
+        document.getElementById("mLastWrite").textContent = bus.lastWriteBytes
+          ? bytesToHexList(bus.lastWriteBytes)
+          : "--";
+        document.getElementById("mLastRead").textContent = bus.lastReadBytes
+          ? bytesToHexList(bus.lastReadBytes) + (bus.lastAddrAck === false ? " (no response)" : "")
+          : "--";
+        document.getElementById("mPointer").textContent = "0x" + toHexByte(light.pointer);
+        document.getElementById("mPower").textContent = light.power ? "ON" : "OFF";
+        document.getElementById("mDecodedLux").textContent =
+          bus.lastDecodedLux === null ? "--" : bus.lastDecodedLux + " lx";
+        document.getElementById("mSimLux").textContent = Math.round(currentLux()) + " lx";
+
+        document.getElementById("lightStatus").textContent = lightStatusText();
+
+        document.getElementById("busStatus").textContent = bus.queue.length ? "Clocking..." : "Idle";
+
+        updateLuxMeter();
+        updateButtonAvailability();
+      }
+
+      function updateLuxMeter() {
+        const pct = Math.max(0, Math.min(100, (currentLux() / LUX_MAX) * 100));
+        document.getElementById("schematicLuxMeter").style.width = pct + "%";
+        document.getElementById("panelLuxMeter").style.width = pct + "%";
+      }
+
+      // ---- Simulation tick / drift ----
+      function stepDrift(dtMs) {
+        if (state.luxOverride) return;
+        light.driftAcc += dtMs;
+        while (light.driftAcc >= DRIFT_INTERVAL_MS) {
+          light.driftAcc -= DRIFT_INTERVAL_MS;
+          light.simLux += (Math.random() * 2 - 1) * LUX_DRIFT_STEP;
+          light.simLux = Math.max(LUX_MIN, Math.min(LUX_MAX, light.simLux));
+        }
+      }
+
+      function pushSample(step) {
+        sim.tickIndex++;
+        let sample;
+        if (step) {
+          bus.lastScl = step.scl;
+          bus.lastSda = step.sda;
+          sample = { tick: sim.tickIndex, scl: step.scl, sda: step.sda };
+          if (step.bitStart) sim.bitLabels.push({ startTick: sim.tickIndex, value: step.bitValue });
+          if (step.byteStart)
+            sim.byteLabels.push({ startTick: sim.tickIndex, value: step.byteValue, kind: step.byteKind });
+          if (step.ackStart) sim.ackLabels.push({ startTick: sim.tickIndex, ack: step.ackValue });
+          if (step.startEdge)
+            sim.frameMarks.push({ tick: sim.tickIndex, kind: step.repeated ? "repeated-start" : "start" });
+          if (step.stopEdge) sim.frameMarks.push({ tick: sim.tickIndex, kind: "stop" });
+        } else {
+          sample = { tick: sim.tickIndex, scl: bus.lastScl, sda: bus.lastSda };
+        }
+        sim.history.push(sample);
+        return sample;
+      }
+
+      // ---- Canvas setup ----
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = busCanvas.parentElement.getBoundingClientRect();
+        busCanvas.width = Math.round(rect.width * dpr);
+        busCanvas.height = Math.round(rect.height * dpr);
+        busCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function themeColor(varName) {
+        return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      }
+
+      function drawGrid(w, h, padL, padR, padT, padB, cols) {
+        busCtx.strokeStyle = themeColor("--grid-line");
+        busCtx.lineWidth = 1;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+        for (let i = 0; i <= cols; i++) {
+          const x = padL + (gw / cols) * i;
+          busCtx.beginPath();
+          busCtx.moveTo(x, padT);
+          busCtx.lineTo(x, padT + gh);
+          busCtx.stroke();
+        }
+        busCtx.strokeStyle = themeColor("--grid-line-strong");
+        busCtx.lineWidth = 1.5;
+        busCtx.beginPath();
+        busCtx.moveTo(padL, padT);
+        busCtx.lineTo(padL, padT + gh);
+        busCtx.lineTo(padL + gw, padT + gh);
+        busCtx.stroke();
+      }
+
+      function drawStepTrace(padL, gw, cutoff, span, valueFn, yFn, color) {
+        busCtx.strokeStyle = color;
+        busCtx.lineWidth = 2;
+        busCtx.shadowBlur = 5;
+        busCtx.shadowColor = color;
+        busCtx.beginPath();
+        let first = true;
+        let prevVal = null;
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const x = padL + gw * ((s.tick - cutoff) / span);
+          const val = valueFn(s);
+          const y = yFn(val);
+          if (first) {
+            busCtx.moveTo(x, y);
+            first = false;
+          } else if (prevVal !== val) {
+            busCtx.lineTo(x, yFn(prevVal));
+            busCtx.lineTo(x, y);
+          } else {
+            busCtx.lineTo(x, y);
+          }
+          prevVal = val;
+        }
+        if (!first) busCtx.lineTo(padL + gw, yFn(prevVal));
+        busCtx.stroke();
+        busCtx.shadowBlur = 0;
+      }
+
+      function drawBusGraph() {
+        const rect = busCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        busCtx.clearRect(0, 0, w, h);
+
+        const padL = 46;
+        const padR = 16;
+        const padT = 10;
+        const padB = 10;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(w, h, padL, padR, padT, padB, 20);
+
+        const span = state.zoomSteps;
+        const cutoff = sim.tickIndex - span;
+        const laneH = gh / 2;
+        const rootStyle = getComputedStyle(document.documentElement);
+
+        // Dashed guide at the start of every byte, spanning both lanes.
+        busCtx.strokeStyle = themeColor("--byte-guide");
+        busCtx.lineWidth = 1;
+        busCtx.setLineDash([4, 4]);
+        for (const b of sim.byteLabels) {
+          if (b.startTick < cutoff || b.startTick > cutoff + span) continue;
+          const x = padL + gw * ((b.startTick - cutoff) / span);
+          busCtx.beginPath();
+          busCtx.moveTo(x, padT);
+          busCtx.lineTo(x, padT + gh);
+          busCtx.stroke();
+        }
+        busCtx.setLineDash([]);
+
+        const lanes = [
+          { key: "scl", label: "SCL", cssVar: "--dim" },
+          { key: "sda", label: "SDA", cssVar: "--cyan" },
+        ];
+
+        const laneY = {};
+        lanes.forEach((lane, i) => {
+          const laneTop = padT + laneH * i;
+          const highY = laneTop + laneH * 0.22;
+          const lowY = laneTop + laneH * 0.82;
+          laneY[lane.key] = { laneTop, highY, lowY };
+          const color = rootStyle.getPropertyValue(lane.cssVar).trim();
+
+          drawStepTrace(
+            padL,
+            gw,
+            cutoff,
+            span,
+            (s) => s[lane.key],
+            (v) => (v ? highY : lowY),
+            color,
+          );
+
+          busCtx.fillStyle = color;
+          busCtx.font = "11px monospace";
+          busCtx.fillText(lane.label, 4, highY + 4);
+        });
+
+        // Solid, distinctly-colored markers for START / repeated-START /
+        // STOP -- these are framing conditions, not data, so they get a
+        // different treatment than the dashed byte guides.
+        const magentaColor = rootStyle.getPropertyValue("--magenta").trim();
+        busCtx.strokeStyle = magentaColor;
+        busCtx.fillStyle = magentaColor;
+        busCtx.lineWidth = 1.5;
+        busCtx.font = "bold 10px monospace";
+        busCtx.textAlign = "center";
+        for (const f of sim.frameMarks) {
+          if (f.tick < cutoff || f.tick > cutoff + span) continue;
+          const x = padL + gw * ((f.tick - cutoff) / span);
+          busCtx.beginPath();
+          busCtx.moveTo(x, padT);
+          busCtx.lineTo(x, padT + gh);
+          busCtx.stroke();
+          const label = f.kind === "start" ? "S" : f.kind === "repeated-start" ? "Sr" : "P";
+          busCtx.fillText(label, x, padT - 2 < 8 ? 8 : padT - 2);
+        }
+        busCtx.textAlign = "left";
+
+        // Hex byte labels on SDA -- one per completed byte, skipped when
+        // too zoomed out to fit without overlapping. Address bytes get a
+        // W/R suffix decoded from their own low bit.
+        const pxPerByte = (gw / span) * 18; // 8 data bits + 1 ack bit
+        if (pxPerByte > 30) {
+          const cyanColor = rootStyle.getPropertyValue("--cyan").trim();
+          busCtx.font = "10px monospace";
+          busCtx.fillStyle = cyanColor;
+          busCtx.textAlign = "center";
+          for (const b of sim.byteLabels) {
+            const centerTick = b.startTick + 7.5;
+            if (centerTick < cutoff || centerTick > cutoff + span) continue;
+            const x = padL + gw * ((centerTick - cutoff) / span);
+            const suffix = b.kind === "addr-w" ? " W" : b.kind === "addr-r" ? " R" : "";
+            busCtx.fillText("0x" + toHexByte(b.value) + suffix, x, laneY.sda.laneTop + 11);
+          }
+          busCtx.textAlign = "left";
+        }
+
+        // ACK/NACK word labels, positioned right after each byte.
+        if (pxPerByte > 46) {
+          busCtx.font = "bold 9px monospace";
+          busCtx.textAlign = "center";
+          for (const a of sim.ackLabels) {
+            if (a.startTick < cutoff || a.startTick > cutoff + span) continue;
+            const x = padL + gw * ((a.startTick - cutoff) / span);
+            busCtx.fillStyle = a.ack
+              ? rootStyle.getPropertyValue("--green").trim()
+              : rootStyle.getPropertyValue("--red").trim();
+            busCtx.fillText(a.ack ? "ACK" : "NACK", x, laneY.sda.lowY + 11);
+          }
+          busCtx.textAlign = "left";
+        }
+
+        // Per-bit 0/1 labels on SDA -- only once zoomed in enough to read
+        // individual bits.
+        const pxPerBit = (gw / span) * 2;
+        if (pxPerBit > 12) {
+          const bitColor = rootStyle.getPropertyValue("--text").trim();
+          busCtx.font = "9px monospace";
+          busCtx.fillStyle = bitColor;
+          busCtx.textAlign = "center";
+          for (const b of sim.bitLabels) {
+            const centerTick = b.startTick + 1;
+            if (centerTick < cutoff || centerTick > cutoff + span) continue;
+            const x = padL + gw * ((centerTick - cutoff) / span);
+            busCtx.fillText(String(b.value), x, b.value ? laneY.sda.highY - 4 : laneY.sda.lowY + 11);
+          }
+          busCtx.textAlign = "left";
+        }
+      }
+
+      // ---- Main loop ----
+      let lastTs = null;
+
+      function draw(ts) {
+        if (lastTs === null) lastTs = ts;
+        let dt = ts - lastTs;
+        lastTs = ts;
+        dt = Math.min(dt, 100); // clamp jumps from a backgrounded tab
+
+        if (!state.paused) {
+          stepDrift(dt);
+
+          bus.stepAcc += dt;
+          const halfStepMs = HALF_BIT_MS[state.speed];
+          let advanced = false;
+          while (bus.stepAcc >= halfStepMs) {
+            bus.stepAcc -= halfStepMs;
+            const step = bus.queue.length ? bus.queue.shift() : null;
+            pushSample(step);
+            advanced = true;
+          }
+
+          if (advanced) {
+            const cutoff = sim.tickIndex - state.zoomSteps * 2;
+            while (sim.history.length && sim.history[0].tick < cutoff) sim.history.shift();
+            while (sim.byteLabels.length && sim.byteLabels[0].startTick < cutoff) sim.byteLabels.shift();
+            while (sim.bitLabels.length && sim.bitLabels[0].startTick < cutoff) sim.bitLabels.shift();
+            while (sim.ackLabels.length && sim.ackLabels[0].startTick < cutoff) sim.ackLabels.shift();
+            while (sim.frameMarks.length && sim.frameMarks[0].tick < cutoff) sim.frameMarks.shift();
+
+            if (bus.queue.length === 0 && bus.pendingCompletion) {
+              // The transaction just finished clocking across the wire --
+              // this is the moment its side effects (pointer moves,
+              // register writes, decoded lux) actually take place.
+              const fn = bus.pendingCompletion;
+              bus.pendingCompletion = null;
+              fn();
+              updateStatusUI();
+            }
+            if (bus.queue.length === 0) updateButtonAvailability();
+          }
+        }
+
+        drawBusGraph();
+        updateSchematic();
+        document.getElementById("mSimLux").textContent = Math.round(currentLux()) + " lx";
+
+        requestAnimationFrame(draw);
+      }
+
+      // Drives the MCU<->device schematic: SCL/SDA glow when electrically
+      // HIGH (I2C idles high, so they're lit most of the time -- that's
+      // the correct picture, not a bug). A chip box highlights whenever
+      // the CURRENT target address field points at it, even before a
+      // transaction runs, previewing which device (if any) will answer.
+      function updateSchematic() {
+        const last = sim.history[sim.history.length - 1];
+        const scl = last ? last.scl : 1;
+        const sda = last ? last.sda : 1;
+
+        document.getElementById("wireScl").classList.toggle("lit", scl === 1);
+        document.getElementById("wireSda").classList.toggle("lit", sda === 1);
+        document.getElementById("chipLight").classList.toggle("active", state.address === LIGHT_ADDR);
+        document.getElementById("chipAccel").classList.toggle("active", state.address === ACCEL_ADDR);
+        nackBanner.classList.toggle("hidden", bus.lastAddrAck !== false);
+      }
+
+      // ---- Event wiring ----
+      function setSpeed(speed) {
+        state.speed = speed;
+        speedStandardBtn.classList.toggle("active", speed === "standard");
+        speedFastBtn.classList.toggle("active", speed === "fast");
+        speedFastPlusBtn.classList.toggle("active", speed === "fastplus");
+        updateStatusUI();
+      }
+      speedStandardBtn.addEventListener("click", () => setSpeed("standard"));
+      speedFastBtn.addEventListener("click", () => setSpeed("fast"));
+      speedFastPlusBtn.addEventListener("click", () => setSpeed("fastplus"));
+
+      // Pausing freezes the whole simulation exactly where it is -- the
+      // clock stops advancing and the bus queue stops draining -- so a
+      // mid-transaction waveform (an address byte, an ACK/NACK bit, a
+      // START/STOP edge) can be studied, then resumed right where it left
+      // off.
+      function setPaused(paused) {
+        state.paused = paused;
+        playBtn.classList.toggle("active", !paused);
+        pauseBtn.classList.toggle("active", paused);
+      }
+      playBtn.addEventListener("click", () => setPaused(false));
+      pauseBtn.addEventListener("click", () => setPaused(true));
+
+      writeBtn.addEventListener("click", doWrite);
+      readBtn.addEventListener("click", doRead);
+
+      addrInput.addEventListener("input", () => {
+        const cleaned = addrInput.value.replace(/[^0-9a-fA-F]/g, "").slice(0, 2);
+        addrInput.value = cleaned;
+        state.address = Math.min(0x7f, parseInt(cleaned, 16) || 0);
+        updateSchematic();
+      });
+
+      writeLenSelect.addEventListener("change", (e) => {
+        state.writeLength = parseInt(e.target.value, 10);
+        updateByteFieldVisibility();
+      });
+
+      byteInputs.forEach((el, i) => {
+        el.addEventListener("input", () => {
+          const cleaned = el.value.replace(/[^0-9a-fA-F]/g, "").slice(0, 2);
+          el.value = cleaned;
+          state.writeBytes[i] = parseInt(cleaned, 16) || 0;
+        });
+      });
+
+      readLenRange.addEventListener("input", (e) => {
+        state.readLength = parseInt(e.target.value, 10);
+        document.getElementById("readLenVal").textContent = state.readLength;
+      });
+
+      zoomRange.addEventListener("input", (e) => {
+        state.zoomSteps = parseInt(e.target.value, 10);
+        document.getElementById("zoomVal").textContent = state.zoomSteps;
+      });
+
+      luxOverrideInput.addEventListener("input", (e) => {
+        const v = parseFloat(e.target.value);
+        state.luxOverrideValue = Number.isNaN(v) ? 0 : v;
+        document.getElementById("luxVal").textContent = Math.round(state.luxOverrideValue);
+      });
+
+      luxOverrideCheck.addEventListener("change", (e) => {
+        state.luxOverride = e.target.checked;
+        if (state.luxOverride) light.simLux = state.luxOverrideValue;
+      });
+
+      resetBtn.addEventListener("click", () => {
+        state.speed = DEFAULTS.speed;
+        state.address = DEFAULTS.address;
+        state.writeLength = DEFAULTS.writeLength;
+        state.writeBytes = DEFAULTS.writeBytes.slice();
+        state.readLength = DEFAULTS.readLength;
+        state.paused = DEFAULTS.paused;
+        state.zoomSteps = DEFAULTS.zoomSteps;
+        state.luxOverride = DEFAULTS.luxOverride;
+        state.luxOverrideValue = DEFAULTS.luxOverrideValue;
+
+        light.pointer = 0x00;
+        light.power = false;
+        light.simLux = 400;
+        light.driftAcc = 0;
+
+        resetSim();
+        setSpeed(DEFAULTS.speed);
+        setPaused(DEFAULTS.paused);
+        syncControlsFromState();
+        updateByteFieldVisibility();
+        updateStatusUI();
+      });
+
+      // Drive every input's on-screen value from state at load time instead
+      // of trusting the HTML's static value="" attributes alone to match.
+      function syncControlsFromState() {
+        addrInput.value = toHexByte(state.address);
+        writeLenSelect.value = String(state.writeLength);
+        syncByteInputsFromState();
+        readLenRange.value = state.readLength;
+        document.getElementById("readLenVal").textContent = state.readLength;
+        zoomRange.value = state.zoomSteps;
+        document.getElementById("zoomVal").textContent = state.zoomSteps;
+        luxOverrideCheck.checked = state.luxOverride;
+        luxOverrideInput.value = state.luxOverrideValue;
+        document.getElementById("luxVal").textContent = Math.round(state.luxOverrideValue);
+        regSelect.value = "0x02";
+      }
+
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      syncControlsFromState();
+      setSpeed(DEFAULTS.speed);
+      setPaused(DEFAULTS.paused);
+      updateByteFieldVisibility();
+      updateStatusUI();
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>
