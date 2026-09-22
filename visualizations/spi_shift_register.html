@@ -11,6 +11,7 @@
         --panel-alt: #0e1424;
         --panel-border: #262f4a;
         --cyan: #22d3ee;
+        --blue: #3b82f6;
         --green: #86efac;
         --orange: #fb923c;
         --red: #f87171;
@@ -26,6 +27,7 @@
         --panel-alt: #eef0f8;
         --panel-border: #ccd1e3;
         --cyan: #0e7490;
+        --blue: #1d4ed8;
         --green: #15803d;
         --orange: #c2410c;
         --red: #b91c1c;
@@ -204,9 +206,14 @@
           box-shadow 0.1s linear;
       }
 
-      .wire-line.pulsing {
-        background: var(--cyan);
-        box-shadow: 0 0 10px 3px var(--cyan);
+      .wire-line.pulsing-zero {
+        background: var(--blue);
+        box-shadow: 0 0 10px 3px var(--blue);
+      }
+
+      .wire-line.pulsing-one {
+        background: var(--red);
+        box-shadow: 0 0 10px 3px var(--red);
       }
 
       .sck-dot {
@@ -229,19 +236,28 @@
         width: 26px;
         height: 26px;
         border-radius: 50%;
-        background: var(--orange);
-        color: #2a1400;
         font-weight: bold;
         font-size: 0.85rem;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 0 8px 2px var(--orange);
         transition:
           left var(--travel-ms, 500ms) linear,
           top var(--travel-ms, 500ms) linear;
         z-index: 5;
         pointer-events: none;
+      }
+
+      .bit-token.bit-zero {
+        background: var(--blue);
+        color: #eef4ff;
+        box-shadow: 0 0 8px 2px var(--blue);
+      }
+
+      .bit-token.bit-one {
+        background: var(--red);
+        color: #2a0505;
+        box-shadow: 0 0 8px 2px var(--red);
       }
 
       .status-banner {
@@ -495,14 +511,14 @@
           <div class="register-title">Controller</div>
           <div class="register-sub">Parallel-In, Serial-Out (PISO)</div>
           <div class="cell-row">
-            <div class="bit-label">bit7</div>
-            <div class="bit-label">bit6</div>
-            <div class="bit-label">bit5</div>
-            <div class="bit-label">bit4</div>
-            <div class="bit-label">bit3</div>
-            <div class="bit-label">bit2</div>
-            <div class="bit-label">bit1</div>
             <div class="bit-label">bit0</div>
+            <div class="bit-label">bit1</div>
+            <div class="bit-label">bit2</div>
+            <div class="bit-label">bit3</div>
+            <div class="bit-label">bit4</div>
+            <div class="bit-label">bit5</div>
+            <div class="bit-label">bit6</div>
+            <div class="bit-label">bit7</div>
           </div>
           <div class="cell-row" id="controllerCells"></div>
           <div class="register-readout">
@@ -522,14 +538,14 @@
           <div class="register-title">Peripheral</div>
           <div class="register-sub">Serial-In, Parallel-Out (SIPO)</div>
           <div class="cell-row">
-            <div class="bit-label">bit7</div>
-            <div class="bit-label">bit6</div>
-            <div class="bit-label">bit5</div>
-            <div class="bit-label">bit4</div>
-            <div class="bit-label">bit3</div>
-            <div class="bit-label">bit2</div>
-            <div class="bit-label">bit1</div>
             <div class="bit-label">bit0</div>
+            <div class="bit-label">bit1</div>
+            <div class="bit-label">bit2</div>
+            <div class="bit-label">bit3</div>
+            <div class="bit-label">bit4</div>
+            <div class="bit-label">bit5</div>
+            <div class="bit-label">bit6</div>
+            <div class="bit-label">bit7</div>
           </div>
           <div class="cell-row" id="peripheralCells"></div>
           <div class="register-readout">
@@ -545,15 +561,15 @@
       <h2>Controls</h2>
 
       <div class="control-group">
-        <label for="byteInput">Data Byte to Load (parallel inputs D7&hellip;D0)</label>
+        <label for="byteInput">Data Byte to Load (parallel inputs D0&hellip;D7)</label>
         <div class="byte-field">
           <span class="prefix">0x</span>
           <input type="text" id="byteInput" maxlength="2" value="A5" />
         </div>
         <div class="pin-toggles">
           <div class="pin-label-row">
-            <span>D7</span><span>D6</span><span>D5</span><span>D4</span
-            ><span>D3</span><span>D2</span><span>D1</span><span>D0</span>
+            <span>D0</span><span>D1</span><span>D2</span><span>D3</span
+            ><span>D4</span><span>D5</span><span>D6</span><span>D7</span>
           </div>
           <div class="pin-toggle-row" id="pinToggles"></div>
         </div>
@@ -593,11 +609,16 @@
       </p>
       <p>
         <strong>Shifting out (PISO).</strong> Each clock edge (Step),
-        exactly one bit &mdash; always the current MSB, bit7 &mdash; leaves
-        the controller's register onto COPI, and the whole register shifts
-        left by one position, backfilling the vacated bit0 slot with 0.
-        After 8 clocks the controller's register is entirely zeroed out:
-        every bit it had has been shifted out, most-significant bit first.
+        exactly one bit &mdash; always the current MSB, bit7, drawn on the
+        side closest to the wire &mdash; leaves the controller's register
+        onto COPI. Every other bit visually slides one position toward
+        that exit, and a fresh 0 enters on the far side to backfill bit0.
+        The traveling bit and the wire's pulse are colored by value
+        &mdash; <span style="color: var(--blue)">blue for a 0</span>,
+        <span style="color: var(--red)">red for a 1</span> &mdash; so you
+        can see at a glance what's actually crossing the wire. After 8
+        clocks the controller's register is entirely zeroed out: every
+        bit it had has been shifted out, most-significant bit first.
       </p>
       <p>
         <strong>Shifting in (SIPO).</strong> The peripheral has no parallel
@@ -611,7 +632,7 @@
         sitting in bit0, untouched by any further shift. The two ends
         land exactly where they should, and the peripheral's register
         now holds the identical byte &mdash; available on its 8 parallel
-        output pins, Q7&hellip;Q0, with no more clocking needed.
+        output pins, Q0&hellip;Q7, with no more clocking needed.
       </p>
       <p>
         Real SPI hardware actually shifts data in <em>both</em> directions
@@ -728,10 +749,15 @@
         pinTogglesEl.appendChild(btn);
         pinToggleEls.push(btn);
       }
+      // Screen position i (left-to-right) is bit(i) -- bit0/LSB on the
+      // left, bit7/MSB on the right -- the reverse of byteToBits()'s own
+      // [bit7...bit0] order, so the button/cell nearest the wire on each
+      // side is always the one actually involved in the next shift.
       pinToggleEls.forEach((btn, i) => {
         btn.addEventListener("click", () => {
           const bits = byteToBits(state.stagedByte);
-          bits[i] = bits[i] ? 0 : 1;
+          const bitIndex = 7 - i;
+          bits[bitIndex] = bits[bitIndex] ? 0 : 1;
           setStagedByte(bitsToByte(bits));
         });
       });
@@ -740,10 +766,10 @@
       function setStagedByte(byte) {
         state.stagedByte = byte & 0xff;
         byteInput.value = toHexByte(state.stagedByte).slice(2);
-        const bits = byteToBits(state.stagedByte);
+        const displayBits = byteToBits(state.stagedByte).slice().reverse();
         pinToggleEls.forEach((btn, i) => {
-          btn.textContent = String(bits[i]);
-          btn.classList.toggle("one", bits[i] === 1);
+          btn.textContent = String(displayBits[i]);
+          btn.classList.toggle("one", displayBits[i] === 1);
         });
       }
 
@@ -755,8 +781,14 @@
       });
 
       // ---- Rendering ----
+      // Cells render left-to-right as bit0...bit7 (reverse of the
+      // canonical [bit7...bit0] arrays) so bit7 -- always the one
+      // shifting out of the controller -- sits right next to the wire on
+      // its side, and bit0 -- always the one shifting into the
+      // peripheral -- sits right next to the wire on its side.
       function renderCells(cellEls, bits) {
-        bits.forEach((b, i) => {
+        const displayBits = bits.slice().reverse();
+        displayBits.forEach((b, i) => {
           cellEls[i].textContent = String(b);
           cellEls[i].classList.toggle("one", b === 1);
         });
@@ -837,12 +869,13 @@
         };
       }
 
-      function pulseSck(durationMs) {
+      function pulseWire(bitValue, durationMs) {
+        const valueClass = bitValue ? "pulsing-one" : "pulsing-zero";
         sckDotEl.classList.add("pulse");
-        wireLineEl.classList.add("pulsing");
+        wireLineEl.classList.add(valueClass);
         setTimeout(() => {
           sckDotEl.classList.remove("pulse");
-          wireLineEl.classList.remove("pulsing");
+          wireLineEl.classList.remove(valueClass);
         }, durationMs * 0.6);
       }
 
@@ -856,7 +889,7 @@
 
         const travelMs = SHIFT_MS[state.speed];
         const outgoing = state.controllerBits[0];
-        pulseSck(travelMs);
+        pulseWire(outgoing, travelMs);
         controllerBoxEl.classList.add("active");
         peripheralBoxEl.classList.add("active");
 
@@ -864,7 +897,7 @@
         const { start: startPos, end: endPos } = wireEndpoints(containerRect);
 
         const token = document.createElement("div");
-        token.className = "bit-token";
+        token.className = "bit-token " + (outgoing ? "bit-one" : "bit-zero");
         token.textContent = String(outgoing);
         token.style.setProperty("--travel-ms", travelMs + "ms");
         token.style.left = startPos.x - 13 + "px";
