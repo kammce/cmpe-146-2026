@@ -1,0 +1,1254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UART Baud Mismatch Visualizer</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-alt: #0e1424;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --blue: #3b82f6;
+        --green: #86efac;
+        --orange: #fb923c;
+        --red: #f87171;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+        --canvas-bg: #050810;
+        --grid-line: #16203a;
+        --grid-line-strong: #3a4468;
+        --byte-guide: rgba(229, 233, 245, 0.25);
+        --how-bg: #1a1206;
+        --how-border: #4a3418;
+      }
+
+      :root[data-theme="light"] {
+        --bg: #f3f4f9;
+        --panel: #ffffff;
+        --panel-alt: #eef0f8;
+        --panel-border: #ccd1e3;
+        --cyan: #0e7490;
+        --blue: #1d4ed8;
+        --green: #15803d;
+        --orange: #c2410c;
+        --red: #b91c1c;
+        --text: #1b2033;
+        --dim: #545e7c;
+        --canvas-bg: #ffffff;
+        --grid-line: #e1e4f0;
+        --grid-line-strong: #b6bcd8;
+        --byte-guide: rgba(27, 32, 51, 0.16);
+        --how-bg: #fff4e3;
+        --how-border: #e3ab5f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 24px;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--green);
+        font-size: 2rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: var(--dim);
+        margin-bottom: 24px;
+      }
+
+      .theme-toggle {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 20;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        color: var(--text);
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px;
+        max-width: 1200px;
+        margin: 0 auto 18px;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .panel h3 {
+        font-size: 0.85rem;
+        color: var(--dim);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0 0 10px;
+      }
+
+      /* ---- Schematic ---- */
+      .schematic-panel {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .schematic {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        min-width: 620px;
+        padding: 6px 4px;
+      }
+
+      .chip-box {
+        flex: 0 0 150px;
+        background: var(--panel-alt);
+        border: 2px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px 10px;
+        text-align: center;
+        transition:
+          border-color 0.15s linear,
+          box-shadow 0.15s linear;
+      }
+
+      .chip-box.active {
+        border-color: var(--cyan);
+        box-shadow: 0 0 10px 1px rgba(34, 211, 238, 0.35);
+      }
+
+      .chip-box .chip-title {
+        color: var(--cyan);
+        font-weight: bold;
+        font-size: 1rem;
+      }
+
+      .chip-box .chip-sub {
+        color: var(--dim);
+        font-size: 0.72rem;
+        margin-top: 4px;
+      }
+
+      .wire-group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        padding: 6px 0;
+      }
+
+      .wire-track {
+        position: relative;
+        height: 4px;
+        background: var(--panel-border);
+        border-radius: 2px;
+        transition:
+          background-color 0.1s linear,
+          box-shadow 0.1s linear;
+      }
+
+      .wire-track .wire-tag {
+        position: absolute;
+        top: -17px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.72rem;
+        white-space: nowrap;
+        color: var(--dim);
+      }
+
+      .wire-track.lit {
+        background-color: var(--cyan);
+        box-shadow: 0 0 10px 3px var(--cyan);
+      }
+
+      .no-clock-note {
+        text-align: center;
+        font-size: 0.72rem;
+        color: var(--dim);
+        font-style: italic;
+      }
+
+      /* ---- Waveform ---- */
+      .canvas-wrap {
+        position: relative;
+        width: 100%;
+        height: 220px;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--canvas-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        display: block;
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--dim);
+        flex-wrap: wrap;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 3px;
+        display: inline-block;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+        align-items: flex-end;
+      }
+
+      .toolbar-group {
+        flex: 1;
+        min-width: 150px;
+      }
+
+      .toolbar-group label {
+        font-size: 0.8rem;
+      }
+
+      .mismatch-readout {
+        text-align: center;
+        font-size: 0.9rem;
+        font-weight: bold;
+        padding: 8px 10px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        color: var(--text);
+      }
+
+      .mismatch-readout.safe {
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .mismatch-readout.risky {
+        border-color: var(--orange);
+        color: var(--orange);
+      }
+
+      .mismatch-readout.broken {
+        border-color: var(--red);
+        color: var(--red);
+      }
+
+      .mismatch-readout .sub {
+        display: block;
+        font-weight: normal;
+        font-size: 0.75rem;
+        color: var(--dim);
+        margin-top: 3px;
+      }
+
+      /* ---- Controls ---- */
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+
+      .control-group {
+        margin-bottom: 16px;
+      }
+
+      .mcu-columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+
+      @media (max-width: 760px) {
+        .mcu-columns {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .mcu-panel {
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .mcu-panel h3 {
+        color: var(--cyan);
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: 0.95rem;
+      }
+
+      input[type="number"],
+      input[type="text"] {
+        width: 100%;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 8px;
+        font-family: inherit;
+        font-size: 0.9rem;
+      }
+
+      .byte-field {
+        display: inline-flex;
+        align-items: center;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 2px 6px;
+        max-width: 110px;
+      }
+
+      .byte-field .prefix {
+        color: var(--dim);
+        font-size: 0.8rem;
+      }
+
+      .byte-field input {
+        width: 100%;
+        background: transparent;
+        border: none;
+        padding: 6px 2px;
+        text-transform: uppercase;
+      }
+
+      .byte-field input:focus,
+      input:focus {
+        outline: none;
+      }
+
+      .preset-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+      }
+
+      .preset-row button {
+        flex: 1;
+        min-width: 64px;
+        font-size: 0.72rem;
+        padding: 6px 4px;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        color: var(--text);
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      .send-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+
+      .send-row button {
+        flex: 0 0 auto;
+        background: linear-gradient(135deg, #22d3ee, #3b82f6);
+        border: none;
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .segmented {
+        display: flex;
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      .segmented button {
+        flex: 1;
+        background: var(--panel-alt);
+        border: none;
+        color: var(--dim);
+        border-radius: 0;
+        padding: 8px 4px;
+        font-size: 0.8rem;
+      }
+
+      .segmented button.active {
+        background: var(--cyan);
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .received-box {
+        margin-top: 12px;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 10px;
+        font-size: 0.8rem;
+      }
+
+      .received-box .row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+
+      .received-box .val {
+        color: var(--cyan);
+        font-weight: bold;
+      }
+
+      .bit-compare {
+        display: flex;
+        gap: 3px;
+        margin-top: 6px;
+        justify-content: center;
+      }
+
+      .bit-cell {
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        color: var(--dim);
+      }
+
+      .bit-cell.match {
+        background: var(--green);
+        color: #04180c;
+        border-color: var(--green);
+      }
+
+      .bit-cell.mismatch {
+        background: var(--red);
+        color: #2a0505;
+        border-color: var(--red);
+      }
+
+      .framing-badge {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        font-weight: bold;
+        background: var(--red);
+        color: #2a0505;
+      }
+
+      #resetBtn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--red);
+        color: var(--red);
+      }
+
+      #resetBtn:hover {
+        background: rgba(248, 113, 113, 0.15);
+      }
+
+      .how-it-works {
+        max-width: 1000px;
+        margin: 18px auto 0;
+        padding: 14px 18px;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        background: var(--how-bg);
+        border: 1px solid var(--how-border);
+        border-radius: 6px;
+      }
+
+      .how-it-works .label {
+        color: var(--orange);
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+      }
+
+      .how-it-works p {
+        margin: 0 0 10px;
+      }
+
+      .how-it-works p:last-child {
+        margin-bottom: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="themeToggleBtn" class="theme-toggle">☀️ Light Theme</button>
+    <h1>UART Baud Mismatch Visualizer</h1>
+    <div class="subtitle">
+      Two microcontrollers, two independent clocks, no shared clock line at
+      all &mdash; each side has to guess the bit timing from its own baud
+      rate setting alone.
+    </div>
+
+    <div class="panel schematic-panel">
+      <div class="schematic">
+        <div class="chip-box" id="chipA">
+          <div class="chip-title">MCU A</div>
+          <div class="chip-sub" id="chipASub">9600 baud</div>
+        </div>
+        <div class="wire-group">
+          <div class="wire-track" id="wireAB">
+            <span class="wire-tag">TX_A &rarr; RX_B</span>
+          </div>
+          <div class="wire-track" id="wireBA">
+            <span class="wire-tag">RX_A &larr; TX_B</span>
+          </div>
+        </div>
+        <div class="chip-box" id="chipB">
+          <div class="chip-title">MCU B</div>
+          <div class="chip-sub" id="chipBSub">9600 baud</div>
+        </div>
+      </div>
+      <div class="no-clock-note">
+        Notice what's missing: no SCK, no SCL &mdash; just two data wires.
+        Each side free-runs on its own clock once it detects a start bit.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Bus Trace</h2>
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <label>Playback Speed</label>
+          <div class="segmented">
+            <button id="speedLow">Low</button>
+            <button id="speedMedium" class="active">Medium</button>
+            <button id="speedHigh">High</button>
+          </div>
+        </div>
+        <div class="toolbar-group">
+          <label>Graph Zoom: <span id="zoomVal">360</span> ticks</label>
+          <input type="range" id="zoomRange" min="120" max="800" step="20" value="360" />
+        </div>
+      </div>
+
+      <div class="mismatch-readout" id="mismatchReadout">
+        Baud rates match &mdash; 0.00% difference
+        <span class="sub" id="mismatchSub">Worst-case sample drift by the stop bit: 0.0% of a bit period</span>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="busCanvas"></canvas>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background: var(--cyan)"></span>TX_A &rarr; RX_B</span>
+        <span><span class="swatch" style="background: var(--orange)"></span>TX_B &rarr; RX_A</span>
+        <span><span class="dot" style="background: var(--green)"></span>correctly sampled bit</span>
+        <span><span class="dot" style="background: var(--red)"></span>misread bit</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Controls</h2>
+      <div class="mcu-columns">
+        <div class="mcu-panel">
+          <h3>MCU A</h3>
+          <div class="control-group">
+            <label for="baudA">Baud Rate</label>
+            <input type="number" id="baudA" min="100" max="1000000" step="1" value="9600" />
+          </div>
+          <div class="control-group">
+            <label>Send from A &rarr; B</label>
+            <div class="send-row">
+              <div class="byte-field">
+                <span class="prefix">0x</span>
+                <input type="text" id="byteA" maxlength="2" value="55" />
+              </div>
+              <button id="sendByteA">Send Byte</button>
+            </div>
+            <div class="send-row" style="margin-top: 8px">
+              <input type="text" id="textA" maxlength="24" placeholder="Or type text&hellip;" />
+              <button id="sendTextA">Send Text</button>
+            </div>
+          </div>
+          <div class="received-box" id="receivedBoxA">
+            <div class="row"><span>Received on A</span><span class="val" id="rxHexA">--</span></div>
+            <div class="row"><span>As ASCII</span><span class="val" id="rxAsciiA">--</span></div>
+            <div class="bit-compare" id="bitCompareA"></div>
+          </div>
+        </div>
+
+        <div class="mcu-panel">
+          <h3>MCU B</h3>
+          <div class="control-group">
+            <label for="baudB">Baud Rate</label>
+            <input type="number" id="baudB" min="100" max="1000000" step="1" value="9600" />
+            <div class="preset-row">
+              <button id="matchABtn">= A</button>
+              <button id="plus1Btn">A +1%</button>
+              <button id="plus5Btn">A +5%</button>
+              <button id="plus20Btn">A +20%</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <label>Send from B &rarr; A</label>
+            <div class="send-row">
+              <div class="byte-field">
+                <span class="prefix">0x</span>
+                <input type="text" id="byteB" maxlength="2" value="AA" />
+              </div>
+              <button id="sendByteB">Send Byte</button>
+            </div>
+            <div class="send-row" style="margin-top: 8px">
+              <input type="text" id="textB" maxlength="24" placeholder="Or type text&hellip;" />
+              <button id="sendTextB">Send Text</button>
+            </div>
+          </div>
+          <div class="received-box" id="receivedBoxB">
+            <div class="row"><span>Received on B</span><span class="val" id="rxHexB">--</span></div>
+            <div class="row"><span>As ASCII</span><span class="val" id="rxAsciiB">--</span></div>
+            <div class="bit-compare" id="bitCompareB"></div>
+          </div>
+        </div>
+      </div>
+
+      <button id="resetBtn" style="margin-top: 16px">Reset</button>
+    </div>
+
+    <div class="how-it-works">
+      <div class="label">How it works</div>
+      <p>
+        <strong>No shared clock.</strong> SPI and I&sup2;C both carry a
+        clock line, so the receiver just reads bits exactly when the
+        controller says to. UART carries no clock at all &mdash; each side
+        is only wired to send data (TX) into the other's RX pin. Both
+        sides have to already agree, in advance, on a baud rate (bits per
+        second), because that agreement is the <em>only</em> way the
+        receiver knows how long one bit lasts.
+      </p>
+      <p>
+        <strong>The frame.</strong> A UART line idles high. To send a
+        byte, the transmitter pulls the line low for one bit period (the
+        <em>start bit</em>) &mdash; that falling edge is the only
+        synchronization the receiver ever gets. Then come the 8 data bits,
+        least-significant bit first, each held for one bit period at the
+        transmitter's own baud rate. Finally a <em>stop bit</em> (line
+        back to idle-high) closes the frame.
+      </p>
+      <p>
+        <strong>How the receiver samples.</strong> The instant it sees the
+        falling edge, the receiver starts its own internal timer, ticking
+        at <em>its own</em> configured baud rate &mdash; not the
+        transmitter's. It waits half a bit period to land in the middle of
+        the start bit, then samples again every full bit period after
+        that: middle of data bit 0, middle of data bit 1, and so on,
+        finishing with the stop bit. It never re-checks itself against the
+        wire again until the next start bit. If both sides agree on the
+        baud rate, every sample lands dead center in the right bit. If
+        they don't, the receiver's sample points drift a little further
+        from center on every single bit, because the error compounds
+        &mdash; by the 9th or 10th bit, a small per-bit error can add up
+        to enough drift to land the sample in the <em>wrong</em> bit
+        entirely, silently corrupting that bit, or missing the stop bit
+        altogether (a <strong>framing error</strong>, the classic symptom
+        of a baud-rate mismatch).
+      </p>
+      <p>
+        Try it: leave both baud rates matched and send a byte &mdash;
+        perfect reception every time. Nudge MCU B's rate by 1% and send
+        again; still usually fine, since the drift by the last bit is
+        still a small fraction of a bit period. Push it to 5% or 20% and
+        watch the sample dots on the trace visibly drift away from the
+        center of each bit, and the received byte (and the
+        per-bit comparison below it) start disagreeing with what was
+        actually sent &mdash; sometimes with a framing error, sometimes
+        just silently wrong data, depending on exactly which bits the
+        drift happens to land on.
+      </p>
+    </div>
+
+    <script>
+      // ---- DOM refs ----
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const busCanvas = document.getElementById("busCanvas");
+      const busCtx = busCanvas.getContext("2d");
+      const speedLowBtn = document.getElementById("speedLow");
+      const speedMediumBtn = document.getElementById("speedMedium");
+      const speedHighBtn = document.getElementById("speedHigh");
+      const zoomRange = document.getElementById("zoomRange");
+      const mismatchReadoutEl = document.getElementById("mismatchReadout");
+      const mismatchSubEl = document.getElementById("mismatchSub");
+      const chipAEl = document.getElementById("chipA");
+      const chipBEl = document.getElementById("chipB");
+      const chipASubEl = document.getElementById("chipASub");
+      const chipBSubEl = document.getElementById("chipBSub");
+      const wireABEl = document.getElementById("wireAB");
+      const wireBAEl = document.getElementById("wireBA");
+
+      const baudAInput = document.getElementById("baudA");
+      const baudBInput = document.getElementById("baudB");
+      const matchABtn = document.getElementById("matchABtn");
+      const plus1Btn = document.getElementById("plus1Btn");
+      const plus5Btn = document.getElementById("plus5Btn");
+      const plus20Btn = document.getElementById("plus20Btn");
+
+      const byteAInput = document.getElementById("byteA");
+      const byteBInput = document.getElementById("byteB");
+      const sendByteABtn = document.getElementById("sendByteA");
+      const sendByteBBtn = document.getElementById("sendByteB");
+      const textAInput = document.getElementById("textA");
+      const textBInput = document.getElementById("textB");
+      const sendTextABtn = document.getElementById("sendTextA");
+      const sendTextBBtn = document.getElementById("sendTextB");
+
+      const rxHexAEl = document.getElementById("rxHexA");
+      const rxAsciiAEl = document.getElementById("rxAsciiA");
+      const bitCompareAEl = document.getElementById("bitCompareA");
+      const rxHexBEl = document.getElementById("rxHexB");
+      const rxAsciiBEl = document.getElementById("rxAsciiB");
+      const bitCompareBEl = document.getElementById("bitCompareB");
+
+      const resetBtn = document.getElementById("resetBtn");
+
+      // ---- Theme (shared preference key with the other visualizations) ----
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        themeToggleBtn.textContent = theme === "light" ? "🌙 Dark Theme" : "☀️ Light Theme";
+      }
+      themeToggleBtn.addEventListener("click", () => {
+        const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+        applyTheme(next);
+        try {
+          localStorage.setItem("spiVizTheme", next);
+        } catch (e) {
+          // Private browsing / blocked storage -- theme just won't persist.
+        }
+      });
+      (function loadInitialTheme() {
+        let saved = null;
+        try {
+          saved = localStorage.getItem("spiVizTheme");
+        } catch (e) {
+          // Ignore -- fall back to the default theme below.
+        }
+        applyTheme(saved === "light" ? "light" : "dark");
+      })();
+
+      // ---- Timing model ----
+      // TICKS_PER_BIT is the animation resolution for ONE transmitter bit
+      // period -- everything else (idle gaps, the receiver's own assumed
+      // bit width) is expressed relative to it, in the same tick timeline,
+      // so only the RATIO of the two baud rates ever matters, never their
+      // absolute values.
+      const TICKS_PER_BIT = 16;
+      const IDLE_LEAD_TICKS = TICKS_PER_BIT; // >=1 full idle-high bit before a start bit
+      const IDLE_TRAIL_TICKS = TICKS_PER_BIT * 3; // generous gap so a drifted read never bleeds into the next queued byte
+      const SPEED_MS = { low: 16, medium: 8, high: 3 }; // ms per tick
+
+      function frameBits(byte) {
+        const bits = [0]; // start bit
+        for (let i = 0; i < 8; i++) bits.push((byte >> i) & 1); // data0..data7, LSB first
+        bits.push(1); // stop bit
+        return bits; // length 10: [start, d0..d7, stop]
+      }
+
+      // The real signal level `dt` ticks after a frame's start-bit edge.
+      function realLevelAt(bits, dt) {
+        if (dt < 0) return 1;
+        const slot = Math.floor(dt / TICKS_PER_BIT);
+        if (slot >= bits.length) return 1;
+        return bits[slot];
+      }
+
+      // What the receiver actually perceives: it re-syncs ONLY at the
+      // start-bit edge (dt=0 in this frame's local timeline), then samples
+      // every trxTicksPerBit ticks at its own assumed rate, always at the
+      // middle of what it believes each bit slot is.
+      function receiveFrame(bits, txBaud, rxBaud) {
+        const trxTicksPerBit = TICKS_PER_BIT * (txBaud / rxBaud);
+        const samples = [];
+        for (let k = 0; k < bits.length; k++) {
+          const dt = trxTicksPerBit * (k + 0.5);
+          samples.push({ k, dt, level: realLevelAt(bits, dt) });
+        }
+        const dataSamples = samples.slice(1, 9);
+        const receivedByte = dataSamples.reduce((acc, s, i) => acc | (s.level << i), 0);
+        const stopOk = samples[9].level === 1;
+        return { samples, dataSamples, receivedByte, stopOk, trxTicksPerBit };
+      }
+
+      function mismatchStats(txBaud, rxBaud) {
+        const errRatio = rxBaud / txBaud - 1; // signed: rx believes bits are shorter (>0) or longer (<0)
+        const worstDriftFraction = 9.5 * Math.abs(errRatio); // accumulated drift by the stop-bit sample, as a fraction of one bit period
+        return { errRatio, mismatchPct: errRatio * 100, worstDriftPct: worstDriftFraction * 100 };
+      }
+
+      function toHexByte(n) {
+        return "0x" + n.toString(16).toUpperCase().padStart(2, "0");
+      }
+
+      function asciiOf(byte) {
+        return byte >= 0x20 && byte <= 0x7e ? "'" + String.fromCharCode(byte) + "'" : "(non-printable)";
+      }
+
+      // ---- State ----
+      const state = {
+        speed: "medium",
+        zoomTicks: parseInt(zoomRange.value, 10),
+        baudA: 9600,
+        baudB: 9600,
+      };
+
+      // Each lane is one direction of travel (UART is full-duplex: two
+      // independent, simultaneously-usable wires). `queue` holds the
+      // levels still waiting to be played into history, one per tick.
+      function makeLane() {
+        return { queue: [], lastLevel: 1 };
+      }
+      const laneAB = makeLane(); // TX_A -> RX_B
+      const laneBA = makeLane(); // TX_B -> RX_A
+
+      // Frames in flight: once a lane finishes playing all of a frame's
+      // bits into history (tracked by tick count, not wall-clock time),
+      // its reception is computed and the result applied.
+      const pendingFrames = []; // { lane: "AB"|"BA", bits, sentByte, txBaud, rxBaud, startTick, ticksRemaining }
+
+      const sim = {
+        tickIndex: 0,
+        history: [], // { tick, ab, ba }
+        marksAB: [], // { tick, correct, kind: "data"|"stop" }
+        marksBA: [],
+      };
+
+      function resetSim() {
+        sim.tickIndex = 0;
+        sim.history = [];
+        sim.marksAB = [];
+        sim.marksBA = [];
+        laneAB.queue = [];
+        laneAB.lastLevel = 1;
+        laneBA.queue = [];
+        laneBA.lastLevel = 1;
+        pendingFrames.length = 0;
+      }
+
+      // ---- Sending ----
+      function queueByte(direction, byte) {
+        const lane = direction === "AB" ? laneAB : laneBA;
+        const txBaud = direction === "AB" ? state.baudA : state.baudB;
+        const rxBaud = direction === "AB" ? state.baudB : state.baudA;
+        const bits = frameBits(byte & 0xff);
+
+        const writeCursor = sim.tickIndex + lane.queue.length;
+        for (let i = 0; i < IDLE_LEAD_TICKS; i++) lane.queue.push(1);
+        for (const b of bits) {
+          for (let i = 0; i < TICKS_PER_BIT; i++) lane.queue.push(b);
+        }
+        for (let i = 0; i < IDLE_TRAIL_TICKS; i++) lane.queue.push(1);
+
+        const startTick = writeCursor + IDLE_LEAD_TICKS; // tick index of the start bit's leading edge
+        const completionTick = startTick + bits.length * TICKS_PER_BIT; // absolute tick at which this frame's own bits (not the trailing idle) finish playing
+        pendingFrames.push({
+          lane: direction,
+          bits,
+          sentByte: byte & 0xff,
+          txBaud,
+          rxBaud,
+          startTick,
+          completionTick,
+        });
+      }
+
+      function sendHexByte(direction, hex) {
+        const v = parseInt(hex, 16);
+        queueByte(direction, Number.isNaN(v) ? 0 : v);
+      }
+
+      function sendText(direction, text) {
+        for (let i = 0; i < text.length; i++) queueByte(direction, text.charCodeAt(i) & 0xff);
+      }
+
+      // ---- Applying a completed frame's reception ----
+      function applyReception(frame) {
+        const { samples, dataSamples, receivedByte, stopOk, trxTicksPerBit } = receiveFrame(
+          frame.bits,
+          frame.txBaud,
+          frame.rxBaud,
+        );
+
+        const marks = frame.lane === "AB" ? sim.marksAB : sim.marksBA;
+        const sentDataBits = frame.bits.slice(1, 9);
+        dataSamples.forEach((s, i) => {
+          marks.push({ tick: frame.startTick + s.dt, correct: s.level === sentDataBits[i], kind: "data" });
+        });
+        marks.push({ tick: frame.startTick + samples[9].dt, correct: stopOk, kind: "stop" });
+
+        const hexEl = frame.lane === "AB" ? rxHexBEl : rxHexAEl;
+        const asciiEl = frame.lane === "AB" ? rxAsciiBEl : rxAsciiAEl;
+        const compareEl = frame.lane === "AB" ? bitCompareBEl : bitCompareAEl;
+
+        hexEl.textContent = toHexByte(receivedByte) + (stopOk ? "" : " (framing error)");
+        asciiEl.textContent = stopOk ? asciiOf(receivedByte) : "-- (frame lost sync)";
+
+        compareEl.innerHTML = "";
+        for (let i = 7; i >= 0; i--) {
+          const bit = (receivedByte >> i) & 1;
+          const match = bit === sentDataBits[i];
+          const cell = document.createElement("div");
+          cell.className = "bit-cell " + (match ? "match" : "mismatch");
+          cell.textContent = String(bit);
+          cell.title = "bit " + i;
+          compareEl.appendChild(cell);
+        }
+        if (!stopOk) {
+          const badge = document.createElement("div");
+          badge.className = "framing-badge";
+          badge.textContent = "⚠ FRAMING ERROR";
+          compareEl.parentElement.appendChild(badge);
+        }
+      }
+
+      // ---- Main loop ----
+      let lastTs = null;
+      let stepAcc = 0;
+
+      function draw(ts) {
+        if (lastTs === null) lastTs = ts;
+        let dt = ts - lastTs;
+        lastTs = ts;
+        dt = Math.min(dt, 100);
+
+        stepAcc += dt;
+        const msPerTick = SPEED_MS[state.speed];
+        let advanced = false;
+        while (stepAcc >= msPerTick) {
+          stepAcc -= msPerTick;
+          sim.tickIndex++;
+
+          const abLevel = laneAB.queue.length ? laneAB.queue.shift() : laneAB.lastLevel;
+          laneAB.lastLevel = abLevel;
+          const baLevel = laneBA.queue.length ? laneBA.queue.shift() : laneBA.lastLevel;
+          laneBA.lastLevel = baLevel;
+          sim.history.push({ tick: sim.tickIndex, ab: abLevel, ba: baLevel });
+
+          for (let i = pendingFrames.length - 1; i >= 0; i--) {
+            const f = pendingFrames[i];
+            if (sim.tickIndex >= f.completionTick) {
+              applyReception(f);
+              pendingFrames.splice(i, 1);
+            }
+          }
+          advanced = true;
+        }
+
+        if (advanced) {
+          const cutoff = sim.tickIndex - state.zoomTicks * 2;
+          while (sim.history.length && sim.history[0].tick < cutoff) sim.history.shift();
+          while (sim.marksAB.length && sim.marksAB[0].tick < cutoff) sim.marksAB.shift();
+          while (sim.marksBA.length && sim.marksBA[0].tick < cutoff) sim.marksBA.shift();
+        }
+
+        drawBusGraph();
+        updateSchematic();
+        requestAnimationFrame(draw);
+      }
+
+      // ---- Canvas ----
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = busCanvas.parentElement.getBoundingClientRect();
+        busCanvas.width = Math.round(rect.width * dpr);
+        busCanvas.height = Math.round(rect.height * dpr);
+        busCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function themeColor(varName) {
+        return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      }
+
+      function drawGrid(w, h, padL, padR, padT, padB, cols) {
+        busCtx.strokeStyle = themeColor("--grid-line");
+        busCtx.lineWidth = 1;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+        for (let i = 0; i <= cols; i++) {
+          const x = padL + (gw / cols) * i;
+          busCtx.beginPath();
+          busCtx.moveTo(x, padT);
+          busCtx.lineTo(x, padT + gh);
+          busCtx.stroke();
+        }
+        busCtx.strokeStyle = themeColor("--grid-line-strong");
+        busCtx.lineWidth = 1.5;
+        busCtx.beginPath();
+        busCtx.moveTo(padL, padT);
+        busCtx.lineTo(padL, padT + gh);
+        busCtx.lineTo(padL + gw, padT + gh);
+        busCtx.stroke();
+      }
+
+      function drawStepTrace(padL, gw, cutoff, span, valueFn, yFn, color) {
+        busCtx.strokeStyle = color;
+        busCtx.lineWidth = 2;
+        busCtx.shadowBlur = 5;
+        busCtx.shadowColor = color;
+        busCtx.beginPath();
+        let first = true;
+        let prevVal = null;
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const x = padL + gw * ((s.tick - cutoff) / span);
+          const val = valueFn(s);
+          const y = yFn(val);
+          if (first) {
+            busCtx.moveTo(x, y);
+            first = false;
+          } else if (prevVal !== val) {
+            busCtx.lineTo(x, yFn(prevVal));
+            busCtx.lineTo(x, y);
+          } else {
+            busCtx.lineTo(x, y);
+          }
+          prevVal = val;
+        }
+        if (!first) busCtx.lineTo(padL + gw, yFn(prevVal));
+        busCtx.stroke();
+        busCtx.shadowBlur = 0;
+      }
+
+      function drawMarks(marks, padL, gw, cutoff, span, y, rootStyle) {
+        for (const m of marks) {
+          if (m.tick < cutoff || m.tick > cutoff + span) continue;
+          const x = padL + gw * ((m.tick - cutoff) / span);
+          const color = rootStyle.getPropertyValue(m.correct ? "--green" : "--red").trim();
+          busCtx.beginPath();
+          busCtx.fillStyle = color;
+          if (m.kind === "stop") {
+            // diamond marker for the stop-bit sample
+            busCtx.moveTo(x, y - 6);
+            busCtx.lineTo(x + 6, y);
+            busCtx.lineTo(x, y + 6);
+            busCtx.lineTo(x - 6, y);
+            busCtx.closePath();
+          } else {
+            busCtx.arc(x, y, 4, 0, Math.PI * 2);
+          }
+          busCtx.fill();
+        }
+      }
+
+      function drawBusGraph() {
+        const rect = busCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        busCtx.clearRect(0, 0, w, h);
+
+        const padL = 90;
+        const padR = 16;
+        const padT = 14;
+        const padB = 10;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        drawGrid(w, h, padL, padR, padT, padB, 20);
+
+        const span = state.zoomTicks;
+        const cutoff = sim.tickIndex - span;
+        const laneH = gh / 2;
+        const rootStyle = getComputedStyle(document.documentElement);
+
+        const cyan = rootStyle.getPropertyValue("--cyan").trim();
+        const orange = rootStyle.getPropertyValue("--orange").trim();
+
+        const abTop = padT;
+        const abHigh = abTop + laneH * 0.22;
+        const abLow = abTop + laneH * 0.78;
+        drawStepTrace(padL, gw, cutoff, span, (s) => s.ab, (v) => (v ? abHigh : abLow), cyan);
+        busCtx.fillStyle = cyan;
+        busCtx.font = "11px monospace";
+        busCtx.fillText("TX_A→RX_B", 4, abHigh + 4);
+        drawMarks(sim.marksAB, padL, gw, cutoff, span, (abHigh + abLow) / 2, rootStyle);
+
+        const baTop = padT + laneH;
+        const baHigh = baTop + laneH * 0.22;
+        const baLow = baTop + laneH * 0.78;
+        drawStepTrace(padL, gw, cutoff, span, (s) => s.ba, (v) => (v ? baHigh : baLow), orange);
+        busCtx.fillStyle = orange;
+        busCtx.fillText("TX_B→RX_A", 4, baHigh + 4);
+        drawMarks(sim.marksBA, padL, gw, cutoff, span, (baHigh + baLow) / 2, rootStyle);
+      }
+
+      function updateSchematic() {
+        const lastAB = sim.history.length ? sim.history[sim.history.length - 1].ab : 1;
+        const lastBA = sim.history.length ? sim.history[sim.history.length - 1].ba : 1;
+        wireABEl.classList.toggle("lit", lastAB === 0);
+        wireBAEl.classList.toggle("lit", lastBA === 0);
+        chipAEl.classList.toggle("active", laneAB.queue.length > 0 || pendingFrames.some((f) => f.lane === "BA"));
+        chipBEl.classList.toggle("active", laneBA.queue.length > 0 || pendingFrames.some((f) => f.lane === "AB"));
+      }
+
+      // ---- Mismatch readout ----
+      function updateMismatchReadout() {
+        const stats = mismatchStats(state.baudA, state.baudB);
+        const absPct = Math.abs(stats.mismatchPct);
+        mismatchReadoutEl.classList.remove("safe", "risky", "broken");
+        let cls;
+        if (absPct < 0.01) cls = "safe";
+        else if (stats.worstDriftPct < 25) cls = "safe";
+        else if (stats.worstDriftPct < 50) cls = "risky";
+        else cls = "broken";
+        mismatchReadoutEl.classList.add(cls);
+
+        const dirNote = absPct < 0.01 ? "" : stats.mismatchPct > 0 ? " (B believes bits are shorter)" : " (B believes bits are longer)";
+        mismatchReadoutEl.firstChild.textContent =
+          absPct < 0.01 ? "Baud rates match — 0.00% difference" : "Baud mismatch: " + absPct.toFixed(2) + "%" + dirNote;
+        mismatchSubEl.textContent =
+          "Worst-case sample drift by the stop bit: " + stats.worstDriftPct.toFixed(1) + "% of a bit period";
+
+        chipASubEl.textContent = state.baudA.toLocaleString() + " baud";
+        chipBSubEl.textContent = state.baudB.toLocaleString() + " baud";
+      }
+
+      // ---- Event wiring ----
+      function setSpeed(speed) {
+        state.speed = speed;
+        speedLowBtn.classList.toggle("active", speed === "low");
+        speedMediumBtn.classList.toggle("active", speed === "medium");
+        speedHighBtn.classList.toggle("active", speed === "high");
+      }
+      speedLowBtn.addEventListener("click", () => setSpeed("low"));
+      speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
+      speedHighBtn.addEventListener("click", () => setSpeed("high"));
+
+      zoomRange.addEventListener("input", (e) => {
+        state.zoomTicks = parseInt(e.target.value, 10);
+        document.getElementById("zoomVal").textContent = state.zoomTicks;
+      });
+
+      function readBaudInput(el, fallback) {
+        const v = parseInt(el.value, 10);
+        return Number.isFinite(v) && v > 0 ? v : fallback;
+      }
+
+      baudAInput.addEventListener("input", () => {
+        state.baudA = readBaudInput(baudAInput, state.baudA);
+        updateMismatchReadout();
+      });
+      baudBInput.addEventListener("input", () => {
+        state.baudB = readBaudInput(baudBInput, state.baudB);
+        updateMismatchReadout();
+      });
+
+      function setBaudB(newBaud) {
+        state.baudB = Math.max(100, Math.round(newBaud));
+        baudBInput.value = state.baudB;
+        updateMismatchReadout();
+      }
+      matchABtn.addEventListener("click", () => setBaudB(state.baudA));
+      plus1Btn.addEventListener("click", () => setBaudB(state.baudA * 1.01));
+      plus5Btn.addEventListener("click", () => setBaudB(state.baudA * 1.05));
+      plus20Btn.addEventListener("click", () => setBaudB(state.baudA * 1.2));
+
+      byteAInput.addEventListener("input", () => {
+        byteAInput.value = byteAInput.value.replace(/[^0-9a-fA-F]/g, "").slice(0, 2);
+      });
+      byteBInput.addEventListener("input", () => {
+        byteBInput.value = byteBInput.value.replace(/[^0-9a-fA-F]/g, "").slice(0, 2);
+      });
+
+      sendByteABtn.addEventListener("click", () => sendHexByte("AB", byteAInput.value));
+      sendByteBBtn.addEventListener("click", () => sendHexByte("BA", byteBInput.value));
+      sendTextABtn.addEventListener("click", () => {
+        if (textAInput.value) sendText("AB", textAInput.value);
+      });
+      sendTextBBtn.addEventListener("click", () => {
+        if (textBInput.value) sendText("BA", textBInput.value);
+      });
+
+      resetBtn.addEventListener("click", () => {
+        state.baudA = 9600;
+        state.baudB = 9600;
+        baudAInput.value = 9600;
+        baudBInput.value = 9600;
+        byteAInput.value = "55";
+        byteBInput.value = "AA";
+        textAInput.value = "";
+        textBInput.value = "";
+        setSpeed("medium");
+        state.zoomTicks = 360;
+        zoomRange.value = 360;
+        document.getElementById("zoomVal").textContent = 360;
+        resetSim();
+        rxHexAEl.textContent = "--";
+        rxAsciiAEl.textContent = "--";
+        bitCompareAEl.innerHTML = "";
+        rxHexBEl.textContent = "--";
+        rxAsciiBEl.textContent = "--";
+        bitCompareBEl.innerHTML = "";
+        document.querySelectorAll(".framing-badge").forEach((b) => b.remove());
+        updateMismatchReadout();
+      });
+
+      // ---- Init ----
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      setSpeed("medium");
+      updateMismatchReadout();
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>
