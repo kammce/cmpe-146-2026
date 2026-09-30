@@ -149,6 +149,32 @@
         color: var(--dim);
       }
 
+      .led {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        margin-left: 6px;
+        background: var(--panel-border);
+        border: 1px solid var(--panel-border);
+        vertical-align: middle;
+        transition:
+          background-color 0.1s linear,
+          box-shadow 0.1s linear;
+      }
+
+      .led.on.a {
+        background: var(--cyan);
+        border-color: var(--cyan);
+        box-shadow: 0 0 8px 2px var(--cyan);
+      }
+
+      .led.on.b {
+        background: var(--orange);
+        border-color: var(--orange);
+        box-shadow: 0 0 8px 2px var(--orange);
+      }
+
       .task-state {
         font-size: 0.68rem;
         padding: 2px 6px;
@@ -444,7 +470,7 @@
       <div class="task-columns">
         <div class="task-box" id="taskBoxA">
           <div class="task-header">
-            <span class="task-name a">Task A</span>
+            <span class="task-name a">Task A <span class="led a" id="ledA" title="LED_A"></span></span>
             <span class="task-state" id="stateA">RUNNING</span>
           </div>
           <div class="task-priority">Priority 1</div>
@@ -454,7 +480,7 @@
 
         <div class="task-box" id="taskBoxB">
           <div class="task-header">
-            <span class="task-name b">Task B</span>
+            <span class="task-name b">Task B <span class="led b" id="ledB" title="LED_B"></span></span>
             <span class="task-state" id="stateB">BLOCKED</span>
           </div>
           <div class="task-priority">Priority 1</div>
@@ -486,8 +512,8 @@
           </div>
         </div>
         <div class="toolbar-group">
-          <label>Graph Zoom: <span id="zoomVal">200</span> ticks</label>
-          <input type="range" id="zoomRange" min="60" max="600" step="20" value="200" />
+          <label>Graph Zoom: <span id="zoomVal">80</span> ticks</label>
+          <input type="range" id="zoomRange" min="40" max="600" step="10" value="80" />
         </div>
       </div>
 
@@ -508,11 +534,11 @@
       <div class="control-columns">
         <div class="control-group">
           <label for="delayA">Task A: vTaskDelay argument (ms = ticks)</label>
-          <input type="number" id="delayA" min="1" max="5000" step="1" value="500" />
+          <input type="number" id="delayA" min="1" max="5000" step="1" value="20" />
         </div>
         <div class="control-group">
           <label for="delayB">Task B: vTaskDelay argument (ms = ticks)</label>
-          <input type="number" id="delayB" min="1" max="5000" step="1" value="300" />
+          <input type="number" id="delayB" min="1" max="5000" step="1" value="14" />
         </div>
       </div>
       <div class="transport-row" style="margin-bottom: 12px">
@@ -554,6 +580,21 @@
         never gets to choose whether to give up the CPU &mdash; anything
         higher priority always wins) and resumes exactly where it left
         off, right after its <code>vTaskDelay()</code> call.
+      </p>
+      <p>
+        <strong>What each task is actually doing.</strong> Both Task A and
+        Task B toggle their own GPIO pin every time they wake up -- watch
+        the small LED next to each task's name flip on and off in step
+        with its highlighted toggle line. The default delays (20 and 14
+        ticks) are deliberately small so a handful of full wake/toggle/
+        sleep cycles happen quickly; type in something like 500 to see
+        the same thing play out on more realistic real-world numbers.
+        Notice that Run doesn't move at one fixed pace: it slows right
+        down whenever Task A or B actually has the CPU, so you can watch
+        each line get entered, but speeds through however many ticks
+        idle spends just waiting -- otherwise you'd either blink and
+        miss a task's two lines of code, or sit through hundreds of
+        uneventful idle ticks to see anything happen.
       </p>
       <p>
         Try it: set Task A and Task B to the same delay and watch them
@@ -616,7 +657,7 @@
         return [
           { text: "for (;;)", exec: false },
           { text: "{", exec: false },
-          { text: "    " + workLine, exec: true },
+          { text: "    " + workLine, exec: true, isToggle: true },
           { text: "    vTaskDelay(pdMS_TO_TICKS(" + delayMs + "));", exec: true, isDelay: true },
           { text: "}", exec: false },
         ];
@@ -629,7 +670,17 @@
         { text: "}", exec: false },
       ];
 
-      const SPEED_MS = { low: 550, medium: 260, high: 90 };
+      // Two paces per speed setting: "task" governs how long each line of
+      // Task A/B's own code stays on screen (slow enough to actually read
+      // as it happens), while "idle" governs ticks spent inside the idle
+      // task -- nothing changes on the screen from one idle tick to the
+      // next, so those fly by instead of making you wait through however
+      // many ticks a delay happens to be.
+      const SPEED_MS = {
+        low: { task: 700, idle: 45 },
+        medium: { task: 380, idle: 16 },
+        high: { task: 160, idle: 5 },
+      };
 
       const state = {
         speed: "medium",
@@ -648,11 +699,12 @@
           blocked: false,
           wakeTick: 0,
           delayMs,
+          led: false,
         };
       }
 
-      const taskA = makeTask("A", "Task A", 1, "HAL_GPIO_TogglePin(LED_A_PORT, LED_A_PIN);", 500);
-      const taskB = makeTask("B", "Task B", 1, "HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);", 300);
+      const taskA = makeTask("A", "Task A", 1, "HAL_GPIO_TogglePin(LED_A_PORT, LED_A_PIN);", 20);
+      const taskB = makeTask("B", "Task B", 1, "HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);", 14);
       const idleTask = { id: "IDLE", name: "Idle Task", priority: 0, code: IDLE_CODE, pc: 2, blocked: false, wakeTick: 0 };
       const allTasks = [taskA, taskB, idleTask];
 
@@ -665,9 +717,11 @@
         taskA.pc = 2;
         taskA.blocked = false;
         taskA.wakeTick = 0;
+        taskA.led = false;
         taskB.pc = 2;
         taskB.blocked = false;
         taskB.wakeTick = 0;
+        taskB.led = false;
         idleTask.pc = 2;
         idleTask.blocked = false;
         runningTaskId = "A";
@@ -721,6 +775,7 @@
           running.blocked = true;
           running.wakeTick = state.tick + running.delayMs;
         } else {
+          if (line.isToggle) running.led = !running.led;
           running.pc = nextExecLine(running, running.pc);
         }
 
@@ -762,8 +817,8 @@
         tickValEl.textContent = state.tick;
 
         const specs = [
-          { task: taskA, box: "taskBoxA", code: "codeA", stateEl: "stateA", countdown: "countdownA" },
-          { task: taskB, box: "taskBoxB", code: "codeB", stateEl: "stateB", countdown: "countdownB" },
+          { task: taskA, box: "taskBoxA", code: "codeA", stateEl: "stateA", countdown: "countdownA", led: "ledA" },
+          { task: taskB, box: "taskBoxB", code: "codeB", stateEl: "stateB", countdown: "countdownB", led: "ledB" },
           { task: idleTask, box: "taskBoxIdle", code: "codeIdle", stateEl: "stateIdle", countdown: "countdownIdle" },
         ];
 
@@ -773,6 +828,10 @@
           boxEl.classList.toggle("running", isRunning);
 
           renderCode(document.getElementById(spec.code), spec.task, isRunning);
+
+          if (spec.led) {
+            document.getElementById(spec.led).classList.toggle("on", spec.task.led);
+          }
 
           const label = taskStateLabel(spec.task, isRunning);
           const stateEl = document.getElementById(spec.stateEl);
@@ -866,8 +925,14 @@
         dt = Math.min(dt, 200);
 
         stepAcc += dt;
-        const msPerTick = SPEED_MS[state.speed];
-        while (stepAcc >= msPerTick) {
+        // Re-read the pace on every iteration, not just once per frame --
+        // the moment a step() call wakes a task and hands it the CPU, the
+        // very next tick needs to switch from fast idle pacing to slow
+        // task pacing immediately, not wait for the next animation frame.
+        while (true) {
+          const pace = SPEED_MS[state.speed];
+          const msPerTick = runningTaskId === "IDLE" ? pace.idle : pace.task;
+          if (stepAcc < msPerTick) break;
           stepAcc -= msPerTick;
           step();
         }
@@ -931,13 +996,13 @@
         lastTs = null;
         stepAcc = 0;
         setSpeed("medium");
-        state.zoomTicks = 200;
-        zoomRange.value = 200;
-        document.getElementById("zoomVal").textContent = 200;
-        delayAInput.value = 500;
-        delayBInput.value = 300;
-        taskA.delayMs = 500;
-        taskB.delayMs = 300;
+        state.zoomTicks = 80;
+        zoomRange.value = 80;
+        document.getElementById("zoomVal").textContent = 80;
+        delayAInput.value = 20;
+        delayBInput.value = 14;
+        taskA.delayMs = 20;
+        taskB.delayMs = 14;
         rebuildTaskCode(taskA, "HAL_GPIO_TogglePin(LED_A_PORT, LED_A_PIN);");
         rebuildTaskCode(taskB, "HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);");
         resetSim();
