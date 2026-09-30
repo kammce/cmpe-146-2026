@@ -1348,8 +1348,10 @@
 
         const span = state.zoomTicks;
         const cutoff = state.tick - span;
-        const maxMa = CPU_CURRENT_ACTIVE_MA;
-        const yFor = (ma) => padT + gh - (ma / maxMa) * gh;
+        // Headroom above the real max so the active level draws a little
+        // below the top edge instead of looking clipped against it.
+        const axisMax = CPU_CURRENT_ACTIVE_MA * 1.25;
+        const yFor = (ma) => padT + gh - (ma / axisMax) * gh;
 
         powerCtx.beginPath();
         let started = false;
