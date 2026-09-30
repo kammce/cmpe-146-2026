@@ -295,6 +295,9 @@
         background: var(--panel-alt);
         border: 1px solid var(--panel-border);
         border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
       }
 
       .power-graph-wrap {
@@ -607,7 +610,8 @@
           <div class="code" id="codeIdle"></div>
           <div class="block-countdown" id="countdownIdle">&nbsp;</div>
           <div class="power-readout" id="powerReadout">
-            CPU current draw: <span id="currentDrawVal">4.2 mA</span>
+            <div>CPU current draw: <span id="currentDrawVal">4.2 mA</span></div>
+            <div>Energy consumed: <span id="energyVal">0.00 &micro;Wh</span></div>
           </div>
           <div class="power-graph-wrap">
             <canvas id="powerCanvas"></canvas>
@@ -687,10 +691,12 @@
             gets to choose whether to give up the CPU &mdash; anything
             higher priority always wins) and resumes exactly where it left
             off, right after its <code>vTaskDelay()</code> call. The idle
-            box also shows a rough CPU current draw and a graph of it over
-            time, since a sleeping core in WFI genuinely pulls less current
-            than one actively fetching instructions (LEDs aren't part of
-            that number, just the CPU core).
+            box also shows a rough CPU current draw, a graph of it over
+            time (0 mA at the bottom, so the active/sleep gap is drawn to
+            scale), and a running total of energy consumed (assuming a
+            3.3V supply) so you can watch it accumulate faster while
+            Task A or B is busy than while the core is asleep in WFI
+            (LEDs aren't part of any of these numbers, just the CPU core).
           </p>
         </div>
         <div class="how-tile">
@@ -816,6 +822,27 @@
       // factored in here, only the CPU itself.
       const CPU_CURRENT_ACTIVE_MA = 18.5;
       const CPU_CURRENT_SLEEP_MA = 4.2;
+      const CPU_VOLTAGE_V = 3.3;
+
+      // Each tick is 1ms of simulated time (the same "ms = ticks"
+      // convention the delay controls use), so this is how many
+      // watt-hours one tick at 1mA works out to: W = V * A, and a tick
+      // is 1/3,600,000 of an hour.
+      const WH_PER_MA_TICK = CPU_VOLTAGE_V / 1000 / 3600000;
+
+      function currentDrawMa(taskId) {
+        return taskId === "IDLE" ? CPU_CURRENT_SLEEP_MA : CPU_CURRENT_ACTIVE_MA;
+      }
+
+      // Formats a watt-hour quantity in whatever unit keeps it readable,
+      // since this simulation's numbers are tiny (fractions of a second
+      // of simulated runtime) compared to real battery-capacity units.
+      function formatWh(wh) {
+        if (wh < 1e-6) return (wh * 1e9).toFixed(2) + " nWh";
+        if (wh < 1e-3) return (wh * 1e6).toFixed(2) + " µWh";
+        if (wh < 1) return (wh * 1e3).toFixed(2) + " mWh";
+        return wh.toFixed(4) + " Wh";
+      }
 
       // Task A branches on a simulated button read: held SW1 blinks the
       // LED much faster (short delay) than the normal idle blink rate.
@@ -893,6 +920,7 @@
         running: false,
         tick: 0,
         buttonHeld: false,
+        energyWh: 0,
       };
 
       const taskA = {
@@ -939,6 +967,7 @@
 
       function resetSim() {
         state.tick = 0;
+        state.energyWh = 0;
         taskA.pc = 2;
         taskA.blocked = false;
         taskA.wakeTick = 0;
@@ -1007,6 +1036,8 @@
 
         runningTaskId = pickRunningTask();
         const running = allTasks.find((t) => t.id === runningTaskId);
+
+        state.energyWh += currentDrawMa(runningTaskId) * WH_PER_MA_TICK;
 
         const line = running.code[running.pc];
         if (line.isDelay) {
@@ -1088,9 +1119,10 @@
         }
 
         const idleRunning = runningTaskId === "IDLE";
-        const currentMa = idleRunning ? CPU_CURRENT_SLEEP_MA : CPU_CURRENT_ACTIVE_MA;
+        const currentMa = currentDrawMa(runningTaskId);
         document.getElementById("currentDrawVal").textContent =
           currentMa.toFixed(1) + " mA (" + (idleRunning ? "WFI sleep" : "active") + ")";
+        document.getElementById("energyVal").textContent = formatWh(state.energyWh);
 
         drawGantt();
         drawPowerGraph();
@@ -1179,16 +1211,14 @@
 
         const span = state.zoomTicks;
         const cutoff = state.tick - span;
-        const minMa = CPU_CURRENT_SLEEP_MA;
         const maxMa = CPU_CURRENT_ACTIVE_MA;
-        const range = maxMa - minMa || 1;
-        const yFor = (ma) => padT + gh - ((ma - minMa) / range) * gh;
+        const yFor = (ma) => padT + gh - (ma / maxMa) * gh;
 
         powerCtx.beginPath();
         let started = false;
         for (const s of sim.history) {
           if (s.tick < cutoff) continue;
-          const ma = s.runningTaskId === "IDLE" ? CPU_CURRENT_SLEEP_MA : CPU_CURRENT_ACTIVE_MA;
+          const ma = currentDrawMa(s.runningTaskId);
           const x0 = padL + gw * ((s.tick - 1 - cutoff) / span);
           const x1 = padL + gw * ((s.tick - cutoff) / span);
           const y = yFor(ma);
