@@ -562,15 +562,36 @@
       <div class="control-columns">
         <div class="control-group">
           <label for="delayA">Task A: Button released</label>
-          <input type="number" id="delayA" min="1" max="5000" step="1" value="20" />
+          <input
+            type="number"
+            id="delayA"
+            min="1"
+            max="5000"
+            step="1"
+            value="20"
+          />
         </div>
         <div class="control-group">
           <label for="delayAFast">Task A: Button pressed</label>
-          <input type="number" id="delayAFast" min="1" max="5000" step="1" value="4" />
+          <input
+            type="number"
+            id="delayAFast"
+            min="1"
+            max="5000"
+            step="1"
+            value="4"
+          />
         </div>
         <div class="control-group">
           <label for="delayB">Task B: Blink</label>
-          <input type="number" id="delayB" min="1" max="5000" step="1" value="10" />
+          <input
+            type="number"
+            id="delayB"
+            min="1"
+            max="5000"
+            step="1"
+            value="10"
+          />
         </div>
       </div>
     </div>
@@ -580,20 +601,28 @@
       <div class="task-columns">
         <div class="task-box" id="taskBoxA">
           <div class="task-header">
-            <span class="task-name a">Task A <span class="led a" id="ledA" title="LED_A"></span></span>
+            <span class="task-name a"
+              >Task A <span class="led a" id="ledA" title="LED_A"></span
+            ></span>
             <span class="task-state" id="stateA">RUNNING</span>
           </div>
           <div class="task-priority">Priority 1</div>
           <div class="code" id="codeA"></div>
           <div class="block-countdown" id="countdownA"></div>
-          <button id="userButton" class="user-button" title="Simulated GPIO input pin, read by button_pressed()">
+          <button
+            id="userButton"
+            class="user-button"
+            title="Simulated GPIO input pin, read by button_pressed()"
+          >
             Hold SW1 (fast blink)
           </button>
         </div>
 
         <div class="task-box" id="taskBoxB">
           <div class="task-header">
-            <span class="task-name b">Task B <span class="led b" id="ledB" title="LED_B"></span></span>
+            <span class="task-name b"
+              >Task B <span class="led b" id="ledB" title="LED_B"></span
+            ></span>
             <span class="task-state" id="stateB">BLOCKED</span>
           </div>
           <div class="task-priority">Priority 1</div>
@@ -611,7 +640,9 @@
           <div class="block-countdown" id="countdownIdle">&nbsp;</div>
           <div class="power-readout" id="powerReadout">
             <div>CPU current draw: <span id="currentDrawVal">4.2 mA</span></div>
-            <div>Energy consumed: <span id="energyVal">0.00 &micro;Wh</span></div>
+            <div>
+              Energy consumed: <span id="energyVal">0.00 &micro;Wh</span>
+            </div>
           </div>
           <div class="power-graph-wrap">
             <canvas id="powerCanvas"></canvas>
@@ -624,16 +655,43 @@
       <h2>Scheduler Trace</h2>
       <div class="toolbar">
         <div class="toolbar-group">
-          <label>CPU Instruction Speed: <span id="taskPaceVal">380</span> ms/line</label>
-          <input type="range" id="taskPaceRange" min="50" max="1200" step="10" value="380" />
+          <label
+            >CPU Instruction Speed:
+            <span id="taskPaceVal">380</span> ms/line</label
+          >
+          <input
+            type="range"
+            id="taskPaceRange"
+            min="50"
+            max="1200"
+            step="10"
+            value="380"
+          />
         </div>
         <div class="toolbar-group">
-          <label>Idle Fast-Forward Speed: <span id="idlePaceVal">16</span> ms/tick</label>
-          <input type="range" id="idlePaceRange" min="1" max="150" step="1" value="16" />
+          <label
+            >Idle Fast-Forward Speed:
+            <span id="idlePaceVal">16</span> ms/tick</label
+          >
+          <input
+            type="range"
+            id="idlePaceRange"
+            min="1"
+            max="150"
+            step="1"
+            value="16"
+          />
         </div>
         <div class="toolbar-group">
           <label>Graph Zoom: <span id="zoomVal">80</span> ticks</label>
-          <input type="range" id="zoomRange" min="40" max="600" step="10" value="80" />
+          <input
+            type="range"
+            id="zoomRange"
+            min="40"
+            max="600"
+            step="10"
+            value="80"
+          />
         </div>
       </div>
 
@@ -643,9 +701,18 @@
         <canvas id="ganttCanvas"></canvas>
       </div>
       <div class="legend">
-        <span><span class="swatch" style="background: var(--cyan)"></span>Task A running</span>
-        <span><span class="swatch" style="background: var(--orange)"></span>Task B running</span>
-        <span><span class="swatch" style="background: var(--panel-border)"></span>Idle running</span>
+        <span
+          ><span class="swatch" style="background: var(--cyan)"></span>Task A
+          running</span
+        >
+        <span
+          ><span class="swatch" style="background: var(--orange)"></span>Task B
+          running</span
+        >
+        <span
+          ><span class="swatch" style="background: var(--panel-border)"></span
+          >Idle running</span
+        >
       </div>
     </div>
 
@@ -655,106 +722,103 @@
         <div class="how-tile">
           <h3>One CPU, one running task</h3>
           <p>
-            This is a single-core simulation: at any given tick, exactly one
-            of these three tasks actually owns the CPU (highlighted with a
-            yellow current-line marker, like a debugger's program counter),
-            and it is always the
-            <em>highest-priority task that is currently ready to run</em>.
-            Task A and Task B share priority 1; the built-in idle task
-            always exists at priority 0, the lowest possible, so it only
-            ever runs when nothing else can.
+            This is a single-core simulation: at any given tick, exactly one of
+            these three tasks actually owns the CPU (highlighted with a yellow
+            current-line marker, like a debugger's program counter), and it is
+            always the
+            <em>highest-priority task that is currently ready to run</em>. Task
+            A and Task B share priority 1; the built-in idle task always exists
+            at priority 0, the lowest possible, so it only ever runs when
+            nothing else can.
           </p>
         </div>
         <div class="how-tile">
           <h3>vTaskDelay() blocks, it doesn't busy-wait</h3>
           <p>
-            When a task calls <code>vTaskDelay(N)</code>, it voluntarily
-            gives up the CPU for the next N ticks &mdash; it moves to the
+            When a task calls <code>vTaskDelay(N)</code>, it voluntarily gives
+            up the CPU for the next N ticks &mdash; it moves to the
             <strong>BLOCKED</strong> state, and the scheduler is free to run
-            something else. The task's code stays paused exactly at that
-            call (the dim yellow marker in its code panel) until N ticks
-            have actually elapsed, at which point it becomes ready again.
+            something else. The task's code stays paused exactly at that call
+            (the dim yellow marker in its code panel) until N ticks have
+            actually elapsed, at which point it becomes ready again.
           </p>
         </div>
         <div class="how-tile">
           <h3>Where idle comes in</h3>
           <p>
-            If both Task A and Task B are blocked at the same time &mdash;
-            which will happen constantly once they're running on different
-            periods &mdash; there is nothing else at priority 1 to run, so
-            the scheduler falls back to the idle task. It just calls
-            <code>enter_low_power()</code> (an <code>__WFI()</code> &mdash;
-            Wait For Interrupt &mdash; under the hood) tick after tick,
-            letting the core sleep until something happens, until one of
-            the delays expires. The instant that happens, the newly-ready
-            task <strong>preempts</strong> idle immediately (idle never
-            gets to choose whether to give up the CPU &mdash; anything
-            higher priority always wins) and resumes exactly where it left
-            off, right after its <code>vTaskDelay()</code> call. The idle
-            box also shows a rough CPU current draw, a graph of it over
-            time (0 mA at the bottom, so the active/sleep gap is drawn to
-            scale), and a running total of energy consumed (assuming a
-            3.3V supply) so you can watch it accumulate faster while
-            Task A or B is busy than while the core is asleep in WFI
-            (LEDs aren't part of any of these numbers, just the CPU core).
+            If both Task A and Task B are blocked at the same time &mdash; which
+            will happen constantly once they're running on different periods
+            &mdash; there is nothing else at priority 1 to run, so the scheduler
+            falls back to the idle task. It just calls
+            <code>enter_low_power()</code> (an <code>__WFI()</code> &mdash; Wait
+            For Interrupt &mdash; under the hood) tick after tick, letting the
+            core sleep until something happens, until one of the delays expires.
+            The instant that happens, the newly-ready task
+            <strong>preempts</strong> idle immediately (idle never gets to
+            choose whether to give up the CPU &mdash; anything higher priority
+            always wins) and resumes exactly where it left off, right after its
+            <code>vTaskDelay()</code> call. The idle box also shows a rough CPU
+            current draw, a graph of it over time (0 mA at the bottom, so the
+            active/sleep gap is drawn to scale), and a running total of energy
+            consumed (assuming a 3.3V supply) so you can watch it accumulate
+            faster while Task A or B is busy than while the core is asleep in
+            WFI (LEDs aren't part of any of these numbers, just the CPU core).
           </p>
         </div>
         <div class="how-tile">
           <h3>What each task is actually doing</h3>
           <p>
-            Both tasks toggle their own LED the same way, by reading the
-            output pin's own driven state and writing back the opposite of
-            it: <code>led.level(not led.level())</code>. Task A does this
-            once per wake; Task B does it four times per lap &mdash; three
-            quick blinks followed by one longer pause &mdash; before it
-            repeats. Watch the small LED next to each task's name light up
-            in step with its highlighted line. The default delays are
-            deliberately small so a handful of full wake/blink/sleep
-            cycles happen quickly; type in bigger numbers to see the same
-            thing play out on more realistic real-world scales.
+            Both tasks toggle their own LED the same way, by reading the output
+            pin's own driven state and writing back the opposite of it:
+            <code>led.level(not led.level())</code>. Task A does this once per
+            wake; Task B does it four times per lap &mdash; three quick blinks
+            followed by one longer pause &mdash; before it repeats. Watch the
+            small LED next to each task's name light up in step with its
+            highlighted line. The default delays are deliberately small so a
+            handful of full wake/blink/sleep cycles happen quickly; type in
+            bigger numbers to see the same thing play out on more realistic
+            real-world scales.
           </p>
         </div>
         <div class="how-tile">
           <h3>Task A branches on a button</h3>
           <p>
             After toggling its LED, Task A calls a made-up
-            <code>button_pressed()</code> to read a GPIO input pin and
-            picks one of <em>two</em> <code>vTaskDelay()</code> calls based
-            on the result -- the untaken branch just sits dim in the code
-            panel, exactly like stepping over an <code>if</code>/<code
-            >else</code> in a real debugger. Press and hold the
-            <strong>Hold SW1</strong> button under Task A's code to
-            simulate pressing that pin: the LED starts blinking much faster
-            (a short vTaskDelay instead of the normal one), and because
-            Task A is now waking up far more often, it and Task B trade the
-            CPU back and forth much more rapidly in the trace below.
-            Release it and Task A returns to its normal, slower blink.
+            <code>button_pressed()</code> to read a GPIO input pin and picks one
+            of <em>two</em> <code>vTaskDelay()</code> calls based on the result
+            -- the untaken branch just sits dim in the code panel, exactly like
+            stepping over an <code>if</code>/<code>else</code> in a real
+            debugger. Press and hold the <strong>Hold SW1</strong> button under
+            Task A's code to simulate pressing that pin: the LED starts blinking
+            much faster (a short vTaskDelay instead of the normal one), and
+            because Task A is now waking up far more often, it and Task B trade
+            the CPU back and forth much more rapidly in the trace below. Release
+            it and Task A returns to its normal, slower blink.
           </p>
         </div>
         <div class="how-tile">
           <h3>CPU Instruction Speed &amp; Idle Fast-Forward Speed</h3>
           <p>
-            Run doesn't move at one fixed pace: <strong>CPU Instruction
-            Speed</strong> controls how long each line of Task A or B's own
-            code stays on screen while one of them has the CPU, and
-            <strong>Idle Fast-Forward Speed</strong> separately controls
-            how quickly ticks pass while idle is just spinning with nothing
-            to do. Turn the first one up to slowly watch every line get
+            Run doesn't move at one fixed pace:
+            <strong>CPU Instruction Speed</strong> controls how long each line
+            of Task A or B's own code stays on screen while one of them has the
+            CPU, and <strong>Idle Fast-Forward Speed</strong> separately
+            controls how quickly ticks pass while idle is just spinning with
+            nothing to do. Turn the first one up to slowly watch every line get
             entered; turn the second one down so you're not stuck watching
-            hundreds of uneventful idle ticks between the interesting
-            parts.
+            hundreds of uneventful idle ticks between the interesting parts.
           </p>
         </div>
         <div class="how-tile">
           <h3>Try it</h3>
           <p>
-            Set Task A and Task B to the same delay and watch them wake on
-            the same tick every cycle (ties are broken by task order here,
-            a simplification of real round-robin behavior between
-            equal-priority tasks). Set them to very different values and
-            watch the trace below fill mostly with idle time punctuated by
-            short bursts of A or B. Use Step to advance exactly one tick at
-            a time, like a debugger, or Run to let it play continuously.
+            Set Task A and Task B to the same delay and watch them wake on the
+            same tick every cycle (ties are broken by task order here, a
+            simplification of real round-robin behavior between equal-priority
+            tasks). Set them to very different values and watch the trace below
+            fill mostly with idle time punctuated by short bursts of A or B. Use
+            Step to advance exactly one tick at a time, like a debugger, or Run
+            to let it play continuously.
           </p>
         </div>
       </div>
@@ -782,10 +846,14 @@
       // ---- Theme (shared preference key with the other visualizations) ----
       function applyTheme(theme) {
         document.documentElement.setAttribute("data-theme", theme);
-        themeToggleBtn.textContent = theme === "light" ? "🌙 Dark Theme" : "☀️ Light Theme";
+        themeToggleBtn.textContent =
+          theme === "light" ? "🌙 Dark Theme" : "☀️ Light Theme";
       }
       themeToggleBtn.addEventListener("click", () => {
-        const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+        const next =
+          document.documentElement.getAttribute("data-theme") === "light"
+            ? "dark"
+            : "light";
         applyTheme(next);
         try {
           localStorage.setItem("spiVizTheme", next);
@@ -853,14 +921,28 @@
         return [
           { text: "while (true)", exec: false },
           { text: "{", exec: false },
-          { text: "    led_a.level(not led_a.level());", exec: true, isToggle: true },
+          {
+            text: "    led_a.level(not led_a.level());",
+            exec: true,
+            isToggle: true,
+          },
           { text: "    if (button_pressed())", exec: false },
           { text: "    {", exec: false },
-          { text: "        vTaskDelay(pdMS_TO_TICKS(" + fastMs + "));", exec: true, isDelay: true, delayMs: fastMs },
+          {
+            text: "        vTaskDelay(pdMS_TO_TICKS(" + fastMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: fastMs,
+          },
           { text: "    }", exec: false },
           { text: "    else", exec: false },
           { text: "    {", exec: false },
-          { text: "        vTaskDelay(pdMS_TO_TICKS(" + normalMs + "));", exec: true, isDelay: true, delayMs: normalMs },
+          {
+            text: "        vTaskDelay(pdMS_TO_TICKS(" + normalMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: normalMs,
+          },
           { text: "    }", exec: false },
           { text: "}", exec: false },
         ];
@@ -887,14 +969,34 @@
         return [
           { text: "while (true)", exec: false },
           { text: "{", exec: false },
-          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
-          { text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));", exec: true, isDelay: true, delayMs: shortMs },
-          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
-          { text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));", exec: true, isDelay: true, delayMs: shortMs },
-          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
-          { text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));", exec: true, isDelay: true, delayMs: shortMs },
-          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
-          { text: "    vTaskDelay(pdMS_TO_TICKS(" + longMs + "));", exec: true, isDelay: true, delayMs: longMs },
+          { text: "    led_b.level(false);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: shortMs,
+          },
+          { text: "    led_b.level(true);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: shortMs,
+          },
+          { text: "    led_b.level(false);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: shortMs,
+          },
+          { text: "    led_b.level(true);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + longMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: longMs,
+          },
           { text: "}", exec: false },
         ];
       }
@@ -997,7 +1099,6 @@
         return ready[0].id;
       }
 
-
       // Advances the system by exactly one tick: wake any tasks whose
       // delay has expired, let the scheduler pick who should run, then
       // execute exactly one line of that task.
@@ -1044,7 +1145,9 @@
           // The call itself just started -- block right here, pc unmoved,
           // until the wake-up loop above finally steps it past this line.
           running.blocked = true;
-          running.wakeTick = state.tick + (line.delayMs != null ? line.delayMs : running.delayMs);
+          running.wakeTick =
+            state.tick +
+            (line.delayMs != null ? line.delayMs : running.delayMs);
         } else {
           if (line.isToggle) running.led = !running.led;
           running.pendingAdvance = true;
@@ -1052,7 +1155,8 @@
 
         sim.history.push({ tick: state.tick, runningTaskId });
         const cutoff = state.tick - state.zoomTicks * 2;
-        while (sim.history.length && sim.history[0].tick < cutoff) sim.history.shift();
+        while (sim.history.length && sim.history[0].tick < cutoff)
+          sim.history.shift();
 
         render();
       }
@@ -1088,9 +1192,29 @@
         tickValEl.textContent = state.tick;
 
         const specs = [
-          { task: taskA, box: "taskBoxA", code: "codeA", stateEl: "stateA", countdown: "countdownA", led: "ledA" },
-          { task: taskB, box: "taskBoxB", code: "codeB", stateEl: "stateB", countdown: "countdownB", led: "ledB" },
-          { task: idleTask, box: "taskBoxIdle", code: "codeIdle", stateEl: "stateIdle", countdown: "countdownIdle" },
+          {
+            task: taskA,
+            box: "taskBoxA",
+            code: "codeA",
+            stateEl: "stateA",
+            countdown: "countdownA",
+            led: "ledA",
+          },
+          {
+            task: taskB,
+            box: "taskBoxB",
+            code: "codeB",
+            stateEl: "stateB",
+            countdown: "countdownB",
+            led: "ledB",
+          },
+          {
+            task: idleTask,
+            box: "taskBoxIdle",
+            code: "codeIdle",
+            stateEl: "stateIdle",
+            countdown: "countdownIdle",
+          },
         ];
 
         for (const spec of specs) {
@@ -1101,7 +1225,9 @@
           renderCode(document.getElementById(spec.code), spec.task, isRunning);
 
           if (spec.led) {
-            document.getElementById(spec.led).classList.toggle("on", spec.task.led);
+            document
+              .getElementById(spec.led)
+              .classList.toggle("on", spec.task.led);
           }
 
           const label = taskStateLabel(spec.task, isRunning);
@@ -1112,7 +1238,10 @@
 
           const countdownEl = document.getElementById(spec.countdown);
           if (spec.task.blocked) {
-            countdownEl.textContent = "Blocked — wakes in " + (spec.task.wakeTick - state.tick) + " tick(s)";
+            countdownEl.textContent =
+              "Blocked — wakes in " +
+              (spec.task.wakeTick - state.tick) +
+              " tick(s)";
           } else {
             countdownEl.innerHTML = "&nbsp;";
           }
@@ -1121,8 +1250,13 @@
         const idleRunning = runningTaskId === "IDLE";
         const currentMa = currentDrawMa(runningTaskId);
         document.getElementById("currentDrawVal").textContent =
-          currentMa.toFixed(1) + " mA (" + (idleRunning ? "WFI sleep" : "active") + ")";
-        document.getElementById("energyVal").textContent = formatWh(state.energyWh);
+          currentMa.toFixed(1) +
+          " mA (" +
+          (idleRunning ? "WFI sleep" : "active") +
+          ")";
+        document.getElementById("energyVal").textContent = formatWh(
+          state.energyWh,
+        );
 
         drawGantt();
         drawPowerGraph();
@@ -1150,7 +1284,9 @@
       }
 
       function themeColor(varName) {
-        return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        return getComputedStyle(document.documentElement)
+          .getPropertyValue(varName)
+          .trim();
       }
 
       function drawGantt() {
@@ -1178,7 +1314,11 @@
 
         const span = state.zoomTicks;
         const cutoff = state.tick - span;
-        const colorFor = { A: themeColor("--cyan"), B: themeColor("--orange"), IDLE: themeColor("--panel-border") };
+        const colorFor = {
+          A: themeColor("--cyan"),
+          B: themeColor("--orange"),
+          IDLE: themeColor("--panel-border"),
+        };
 
         for (const s of sim.history) {
           if (s.tick < cutoff) continue;
@@ -1268,7 +1408,8 @@
         // moment itself rather than just lingering slightly after a
         // burst that already finished.
         while (true) {
-          const msPerTick = runningTaskId === "IDLE" ? state.idlePaceMs : state.taskPaceMs;
+          const msPerTick =
+            runningTaskId === "IDLE" ? state.idlePaceMs : state.taskPaceMs;
           if (stepAcc < msPerTick) break;
           stepAcc -= msPerTick;
           step();
