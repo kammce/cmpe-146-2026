@@ -362,27 +362,9 @@
         outline: none;
       }
 
-      .segmented {
-        display: flex;
-        border: 1px solid var(--panel-border);
-        border-radius: 6px;
-        overflow: hidden;
-      }
-
-      .segmented button {
-        flex: 1;
-        background: var(--panel-alt);
-        border: none;
-        color: var(--dim);
-        border-radius: 0;
-        padding: 8px 4px;
-        font-size: 0.8rem;
-      }
-
-      .segmented button.active {
-        background: var(--cyan);
-        color: #04101c;
-        font-weight: bold;
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--cyan);
       }
 
       button {
@@ -504,12 +486,12 @@
       <h2>Scheduler Trace</h2>
       <div class="toolbar">
         <div class="toolbar-group">
-          <label>Playback Speed</label>
-          <div class="segmented">
-            <button id="speedLow">Low</button>
-            <button id="speedMedium" class="active">Medium</button>
-            <button id="speedHigh">High</button>
-          </div>
+          <label>CPU Instruction Speed: <span id="taskPaceVal">380</span> ms/line</label>
+          <input type="range" id="taskPaceRange" min="50" max="1200" step="10" value="380" />
+        </div>
+        <div class="toolbar-group">
+          <label>Idle Fast-Forward Speed: <span id="idlePaceVal">16</span> ms/tick</label>
+          <input type="range" id="idlePaceRange" min="1" max="150" step="1" value="16" />
         </div>
         <div class="toolbar-group">
           <label>Graph Zoom: <span id="zoomVal">80</span> ticks</label>
@@ -589,12 +571,14 @@
         ticks) are deliberately small so a handful of full wake/toggle/
         sleep cycles happen quickly; type in something like 500 to see
         the same thing play out on more realistic real-world numbers.
-        Notice that Run doesn't move at one fixed pace: it slows right
-        down whenever Task A or B actually has the CPU, so you can watch
-        each line get entered, but speeds through however many ticks
-        idle spends just waiting -- otherwise you'd either blink and
-        miss a task's two lines of code, or sit through hundreds of
-        uneventful idle ticks to see anything happen.
+        Notice that Run doesn't move at one fixed pace: <strong>CPU
+        Instruction Speed</strong> controls how long each line of Task A
+        or B's own code stays on screen while one of them has the CPU,
+        and <strong>Idle Fast-Forward Speed</strong> separately controls
+        how quickly ticks pass while idle is just spinning with nothing
+        to do. Turn the first one up to slowly watch every line get
+        entered; turn the second one down so you're not stuck watching
+        hundreds of uneventful idle ticks between the interesting parts.
       </p>
       <p>
         Try it: set Task A and Task B to the same delay and watch them
@@ -612,9 +596,8 @@
       const themeToggleBtn = document.getElementById("themeToggleBtn");
       const ganttCanvas = document.getElementById("ganttCanvas");
       const ganttCtx = ganttCanvas.getContext("2d");
-      const speedLowBtn = document.getElementById("speedLow");
-      const speedMediumBtn = document.getElementById("speedMedium");
-      const speedHighBtn = document.getElementById("speedHigh");
+      const taskPaceRange = document.getElementById("taskPaceRange");
+      const idlePaceRange = document.getElementById("idlePaceRange");
       const zoomRange = document.getElementById("zoomRange");
       const tickValEl = document.getElementById("tickVal");
       const delayAInput = document.getElementById("delayA");
@@ -670,20 +653,15 @@
         { text: "}", exec: false },
       ];
 
-      // Two paces per speed setting: "task" governs how long each line of
-      // Task A/B's own code stays on screen (slow enough to actually read
-      // as it happens), while "idle" governs ticks spent inside the idle
-      // task -- nothing changes on the screen from one idle tick to the
-      // next, so those fly by instead of making you wait through however
-      // many ticks a delay happens to be.
-      const SPEED_MS = {
-        low: { task: 700, idle: 45 },
-        medium: { task: 380, idle: 16 },
-        high: { task: 160, idle: 5 },
-      };
-
+      // Two independently-controlled paces: taskPaceMs governs how long
+      // each line of Task A/B's own code stays on screen (slow enough to
+      // actually read as it happens), while idlePaceMs governs ticks
+      // spent inside the idle task -- nothing changes on the screen from
+      // one idle tick to the next, so those can fly by independently of
+      // how slowly real task code is stepping.
       const state = {
-        speed: "medium",
+        taskPaceMs: parseInt(taskPaceRange.value, 10),
+        idlePaceMs: parseInt(idlePaceRange.value, 10),
         zoomTicks: parseInt(zoomRange.value, 10),
         running: false,
         tick: 0,
@@ -700,12 +678,22 @@
           wakeTick: 0,
           delayMs,
           led: false,
+          pendingAdvance: false,
         };
       }
 
       const taskA = makeTask("A", "Task A", 1, "HAL_GPIO_TogglePin(LED_A_PORT, LED_A_PIN);", 20);
       const taskB = makeTask("B", "Task B", 1, "HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);", 14);
-      const idleTask = { id: "IDLE", name: "Idle Task", priority: 0, code: IDLE_CODE, pc: 2, blocked: false, wakeTick: 0 };
+      const idleTask = {
+        id: "IDLE",
+        name: "Idle Task",
+        priority: 0,
+        code: IDLE_CODE,
+        pc: 2,
+        blocked: false,
+        wakeTick: 0,
+        pendingAdvance: false,
+      };
       const allTasks = [taskA, taskB, idleTask];
 
       let runningTaskId = "A"; // who owns the CPU right now
@@ -718,12 +706,15 @@
         taskA.blocked = false;
         taskA.wakeTick = 0;
         taskA.led = false;
+        taskA.pendingAdvance = false;
         taskB.pc = 2;
         taskB.blocked = false;
         taskB.wakeTick = 0;
         taskB.led = false;
+        taskB.pendingAdvance = false;
         idleTask.pc = 2;
         idleTask.blocked = false;
+        idleTask.pendingAdvance = false;
         runningTaskId = "A";
         sim.history = [];
       }
@@ -739,6 +730,7 @@
         ready.sort((x, y) => y.priority - x.priority);
         return ready[0].id;
       }
+
 
       // Advances the system by exactly one tick: wake any tasks whose
       // delay has expired, let the scheduler pick who should run, then
@@ -765,18 +757,29 @@
           }
         }
 
+        // A non-blocking line finished on the tick it was rendered as
+        // "current" -- advance past it only now, at the start of the next
+        // tick, so the render() call below this task's execution actually
+        // paints it as current for at least one frame before pc moves on.
+        for (const t of allTasks) {
+          if (t.pendingAdvance) {
+            t.pc = nextExecLine(t, t.pc);
+            t.pendingAdvance = false;
+          }
+        }
+
         runningTaskId = pickRunningTask();
         const running = allTasks.find((t) => t.id === runningTaskId);
 
         const line = running.code[running.pc];
         if (line.isDelay) {
           // The call itself just started -- block right here, pc unmoved,
-          // until nextExecLine() above finally steps it past this line.
+          // until the wake-up loop above finally steps it past this line.
           running.blocked = true;
           running.wakeTick = state.tick + running.delayMs;
         } else {
           if (line.isToggle) running.led = !running.led;
-          running.pc = nextExecLine(running, running.pc);
+          running.pendingAdvance = true;
         }
 
         sim.history.push({ tick: state.tick, runningTaskId });
@@ -925,13 +928,19 @@
         dt = Math.min(dt, 200);
 
         stepAcc += dt;
-        // Re-read the pace on every iteration, not just once per frame --
-        // the moment a step() call wakes a task and hands it the CPU, the
-        // very next tick needs to switch from fast idle pacing to slow
-        // task pacing immediately, not wait for the next animation frame.
+        // Re-read the pace on every iteration, not just once per frame,
+        // based on who actually ran the tick that just completed. This is
+        // one tick "behind" -- right as a task's burst ends and idle
+        // takes over, that first idle tick still gets paced at the
+        // slower task speed once, before correctly switching to idle
+        // speed for the rest of the wait. The alternative (deciding from
+        // a prediction of who runs *next*) sounds more precise, but it
+        // mis-paces the *last* idle tick right before a task wakes up
+        // instead -- which is worse, since it visibly delays the wake-up
+        // moment itself rather than just lingering slightly after a
+        // burst that already finished.
         while (true) {
-          const pace = SPEED_MS[state.speed];
-          const msPerTick = runningTaskId === "IDLE" ? pace.idle : pace.task;
+          const msPerTick = runningTaskId === "IDLE" ? state.idlePaceMs : state.taskPaceMs;
           if (stepAcc < msPerTick) break;
           stepAcc -= msPerTick;
           step();
@@ -940,15 +949,14 @@
       }
 
       // ---- Event wiring ----
-      function setSpeed(speed) {
-        state.speed = speed;
-        speedLowBtn.classList.toggle("active", speed === "low");
-        speedMediumBtn.classList.toggle("active", speed === "medium");
-        speedHighBtn.classList.toggle("active", speed === "high");
-      }
-      speedLowBtn.addEventListener("click", () => setSpeed("low"));
-      speedMediumBtn.addEventListener("click", () => setSpeed("medium"));
-      speedHighBtn.addEventListener("click", () => setSpeed("high"));
+      taskPaceRange.addEventListener("input", (e) => {
+        state.taskPaceMs = parseInt(e.target.value, 10);
+        document.getElementById("taskPaceVal").textContent = state.taskPaceMs;
+      });
+      idlePaceRange.addEventListener("input", (e) => {
+        state.idlePaceMs = parseInt(e.target.value, 10);
+        document.getElementById("idlePaceVal").textContent = state.idlePaceMs;
+      });
 
       zoomRange.addEventListener("input", (e) => {
         state.zoomTicks = parseInt(e.target.value, 10);
@@ -995,7 +1003,12 @@
         state.running = false;
         lastTs = null;
         stepAcc = 0;
-        setSpeed("medium");
+        state.taskPaceMs = 380;
+        taskPaceRange.value = 380;
+        document.getElementById("taskPaceVal").textContent = 380;
+        state.idlePaceMs = 16;
+        idlePaceRange.value = 16;
+        document.getElementById("idlePaceVal").textContent = 16;
         state.zoomTicks = 80;
         zoomRange.value = 80;
         document.getElementById("zoomVal").textContent = 80;
@@ -1012,7 +1025,6 @@
       // ---- Init ----
       window.addEventListener("resize", resizeCanvas);
       resizeCanvas();
-      setSpeed("medium");
       render();
     </script>
   </body>
