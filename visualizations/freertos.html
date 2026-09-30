@@ -70,9 +70,11 @@
       }
 
       .theme-toggle {
-        position: fixed;
+        display: block;
+        width: fit-content;
+        margin: 0 0 12px auto;
+        position: sticky;
         top: 16px;
-        right: 16px;
         z-index: 20;
         background: var(--panel);
         border: 1px solid var(--panel-border);
@@ -295,6 +297,13 @@
         border-radius: 6px;
       }
 
+      .power-graph-wrap {
+        position: relative;
+        width: 100%;
+        height: 54px;
+        margin-top: 6px;
+      }
+
       /* ---- Gantt trace ---- */
       .canvas-wrap {
         position: relative;
@@ -493,7 +502,7 @@
       }
 
       .how-it-works {
-        max-width: 1000px;
+        max-width: 1300px;
         margin: 18px auto 0;
         padding: 14px 18px;
         font-size: 0.85rem;
@@ -506,15 +515,31 @@
       .how-it-works .label {
         color: var(--orange);
         font-size: 0.8rem;
-        margin-bottom: 4px;
+        margin-bottom: 10px;
       }
 
-      .how-it-works p {
-        margin: 0 0 10px;
+      .how-it-works-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 14px;
       }
 
-      .how-it-works p:last-child {
-        margin-bottom: 0;
+      .how-tile {
+        background: var(--panel-alt);
+        border: 1px solid var(--how-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        min-width: 0;
+      }
+
+      .how-tile h3 {
+        margin: 0 0 6px;
+        font-size: 0.85rem;
+        color: var(--orange);
+      }
+
+      .how-tile p {
+        margin: 0;
       }
     </style>
   </head>
@@ -584,6 +609,9 @@
           <div class="power-readout" id="powerReadout">
             CPU current draw: <span id="currentDrawVal">4.2 mA</span>
           </div>
+          <div class="power-graph-wrap">
+            <canvas id="powerCanvas"></canvas>
+          </div>
         </div>
       </div>
     </div>
@@ -619,88 +647,111 @@
 
     <div class="how-it-works">
       <div class="label">How it works</div>
-      <p>
-        <strong>One CPU, one running task.</strong> This is a single-core
-        simulation: at any given tick, exactly one of these three tasks
-        actually owns the CPU (highlighted with a yellow current-line
-        marker, like a debugger's program counter), and it is always the
-        <em>highest-priority task that is currently ready to run</em>.
-        Task A and Task B share priority 1; the built-in idle task always
-        exists at priority 0, the lowest possible, so it only ever runs
-        when nothing else can.
-      </p>
-      <p>
-        <strong>vTaskDelay() blocks, it doesn't busy-wait.</strong> When a
-        task calls <code>vTaskDelay(N)</code>, it voluntarily gives up the
-        CPU for the next N ticks &mdash; it moves to the
-        <strong>BLOCKED</strong> state, and the scheduler is free to run
-        something else. The task's code stays paused exactly at that call
-        (the dim yellow marker in its code panel) until N ticks have
-        actually elapsed, at which point it becomes ready again.
-      </p>
-      <p>
-        <strong>Where idle comes in.</strong> If both Task A and Task B
-        are blocked at the same time &mdash; which will happen constantly
-        once they're running on different periods &mdash; there is
-        nothing else at priority 1 to run, so the scheduler falls back to
-        the idle task. It just calls <code>enter_low_power()</code>
-        (an <code>__WFI()</code> &mdash; Wait For Interrupt &mdash; under
-        the hood) tick after tick, letting the core sleep until something
-        happens, until one of the delays expires. The instant that happens, the
-        newly-ready task <strong>preempts</strong> idle immediately (idle
-        never gets to choose whether to give up the CPU &mdash; anything
-        higher priority always wins) and resumes exactly where it left
-        off, right after its <code>vTaskDelay()</code> call. The idle box
-        also shows a rough CPU current draw, since a sleeping core in WFI
-        genuinely pulls less current than one actively fetching
-        instructions (LEDs aren't part of that number, just the CPU core).
-      </p>
-      <p>
-        <strong>What each task is actually doing.</strong> Both tasks
-        toggle their own LED the same way, by reading the output pin's own
-        driven state and writing back the opposite of it:
-        <code>led.level(not led.level())</code>. Task A does this once per
-        wake; Task B does it four times per lap &mdash; three quick blinks
-        followed by one longer pause &mdash; before it repeats. Watch the
-        small LED next to each task's name light up in step with its
-        highlighted line. The default delays are deliberately small so a
-        handful of full wake/blink/sleep cycles happen quickly; type in
-        bigger numbers to see the same thing play out on more realistic
-        real-world scales.
-      </p>
-      <p>
-        <strong>Task A branches on a button.</strong> After toggling its
-        LED, Task A calls a made-up <code>button_pressed()</code> to read
-        a GPIO input pin and picks one of <em>two</em>
-        <code>vTaskDelay()</code> calls based on the result -- the untaken
-        branch just sits dim in the code panel, exactly like stepping over
-        an <code>if</code>/<code>else</code> in a real debugger. Press and
-        hold the <strong>Hold SW1</strong> button under Task A's code to
-        simulate pressing that pin: the LED starts blinking much faster
-        (a short vTaskDelay instead of the normal one), and because Task A
-        is now waking up far more often, it and Task B trade the CPU back
-        and forth much more rapidly in the trace below. Release it and
-        Task A returns to its normal, slower blink.
-      </p>
-      <p>
-        Notice that Run doesn't move at one fixed pace: <strong>CPU
-        Instruction Speed</strong> controls how long each line of Task A
-        or B's own code stays on screen while one of them has the CPU,
-        and <strong>Idle Fast-Forward Speed</strong> separately controls
-        how quickly ticks pass while idle is just spinning with nothing
-        to do. Turn the first one up to slowly watch every line get
-        entered; turn the second one down so you're not stuck watching
-        hundreds of uneventful idle ticks between the interesting parts.
-      </p>
-      <p>
-        Try it: set Task A and Task B to the same delay and watch them
-        wake on the same tick every cycle (ties are broken by task order
-        here, a simplification of real round-robin behavior between
-        equal-priority tasks). Set them to very different values and
-        watch the trace below fill mostly with idle time punctuated by
-        short bursts of A or B. Use Step to advance exactly one tick at a
-        time, like a debugger, or Run to let it play continuously.
-      </p>
+      <div class="how-it-works-grid">
+        <div class="how-tile">
+          <h3>One CPU, one running task</h3>
+          <p>
+            This is a single-core simulation: at any given tick, exactly one
+            of these three tasks actually owns the CPU (highlighted with a
+            yellow current-line marker, like a debugger's program counter),
+            and it is always the
+            <em>highest-priority task that is currently ready to run</em>.
+            Task A and Task B share priority 1; the built-in idle task
+            always exists at priority 0, the lowest possible, so it only
+            ever runs when nothing else can.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>vTaskDelay() blocks, it doesn't busy-wait</h3>
+          <p>
+            When a task calls <code>vTaskDelay(N)</code>, it voluntarily
+            gives up the CPU for the next N ticks &mdash; it moves to the
+            <strong>BLOCKED</strong> state, and the scheduler is free to run
+            something else. The task's code stays paused exactly at that
+            call (the dim yellow marker in its code panel) until N ticks
+            have actually elapsed, at which point it becomes ready again.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>Where idle comes in</h3>
+          <p>
+            If both Task A and Task B are blocked at the same time &mdash;
+            which will happen constantly once they're running on different
+            periods &mdash; there is nothing else at priority 1 to run, so
+            the scheduler falls back to the idle task. It just calls
+            <code>enter_low_power()</code> (an <code>__WFI()</code> &mdash;
+            Wait For Interrupt &mdash; under the hood) tick after tick,
+            letting the core sleep until something happens, until one of
+            the delays expires. The instant that happens, the newly-ready
+            task <strong>preempts</strong> idle immediately (idle never
+            gets to choose whether to give up the CPU &mdash; anything
+            higher priority always wins) and resumes exactly where it left
+            off, right after its <code>vTaskDelay()</code> call. The idle
+            box also shows a rough CPU current draw and a graph of it over
+            time, since a sleeping core in WFI genuinely pulls less current
+            than one actively fetching instructions (LEDs aren't part of
+            that number, just the CPU core).
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>What each task is actually doing</h3>
+          <p>
+            Both tasks toggle their own LED the same way, by reading the
+            output pin's own driven state and writing back the opposite of
+            it: <code>led.level(not led.level())</code>. Task A does this
+            once per wake; Task B does it four times per lap &mdash; three
+            quick blinks followed by one longer pause &mdash; before it
+            repeats. Watch the small LED next to each task's name light up
+            in step with its highlighted line. The default delays are
+            deliberately small so a handful of full wake/blink/sleep
+            cycles happen quickly; type in bigger numbers to see the same
+            thing play out on more realistic real-world scales.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>Task A branches on a button</h3>
+          <p>
+            After toggling its LED, Task A calls a made-up
+            <code>button_pressed()</code> to read a GPIO input pin and
+            picks one of <em>two</em> <code>vTaskDelay()</code> calls based
+            on the result -- the untaken branch just sits dim in the code
+            panel, exactly like stepping over an <code>if</code>/<code
+            >else</code> in a real debugger. Press and hold the
+            <strong>Hold SW1</strong> button under Task A's code to
+            simulate pressing that pin: the LED starts blinking much faster
+            (a short vTaskDelay instead of the normal one), and because
+            Task A is now waking up far more often, it and Task B trade the
+            CPU back and forth much more rapidly in the trace below.
+            Release it and Task A returns to its normal, slower blink.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>CPU Instruction Speed &amp; Idle Fast-Forward Speed</h3>
+          <p>
+            Run doesn't move at one fixed pace: <strong>CPU Instruction
+            Speed</strong> controls how long each line of Task A or B's own
+            code stays on screen while one of them has the CPU, and
+            <strong>Idle Fast-Forward Speed</strong> separately controls
+            how quickly ticks pass while idle is just spinning with nothing
+            to do. Turn the first one up to slowly watch every line get
+            entered; turn the second one down so you're not stuck watching
+            hundreds of uneventful idle ticks between the interesting
+            parts.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>Try it</h3>
+          <p>
+            Set Task A and Task B to the same delay and watch them wake on
+            the same tick every cycle (ties are broken by task order here,
+            a simplification of real round-robin behavior between
+            equal-priority tasks). Set them to very different values and
+            watch the trace below fill mostly with idle time punctuated by
+            short bursts of A or B. Use Step to advance exactly one tick at
+            a time, like a debugger, or Run to let it play continuously.
+          </p>
+        </div>
+      </div>
     </div>
 
     <script>
@@ -708,6 +759,8 @@
       const themeToggleBtn = document.getElementById("themeToggleBtn");
       const ganttCanvas = document.getElementById("ganttCanvas");
       const ganttCtx = ganttCanvas.getContext("2d");
+      const powerCanvas = document.getElementById("powerCanvas");
+      const powerCtx = powerCanvas.getContext("2d");
       const taskPaceRange = document.getElementById("taskPaceRange");
       const idlePaceRange = document.getElementById("idlePaceRange");
       const zoomRange = document.getElementById("zoomRange");
@@ -1040,6 +1093,7 @@
           currentMa.toFixed(1) + " mA (" + (idleRunning ? "WFI sleep" : "active") + ")";
 
         drawGantt();
+        drawPowerGraph();
         updateButtonAvailability();
       }
 
@@ -1056,6 +1110,11 @@
         ganttCanvas.width = Math.round(rect.width * dpr);
         ganttCanvas.height = Math.round(rect.height * dpr);
         ganttCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const powerRect = powerCanvas.parentElement.getBoundingClientRect();
+        powerCanvas.width = Math.round(powerRect.width * dpr);
+        powerCanvas.height = Math.round(powerRect.height * dpr);
+        powerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
       function themeColor(varName) {
@@ -1100,6 +1159,56 @@
         ganttCtx.strokeStyle = themeColor("--grid-line-strong");
         ganttCtx.lineWidth = 1.5;
         ganttCtx.strokeRect(padL, padT, gw, gh);
+      }
+
+      // Reuses the same sim.history/zoom window as the scheduler trace so
+      // the two graphs stay in sync tick-for-tick -- current draw is just
+      // a step function of "was the CPU active or asleep in WFI that tick."
+      function drawPowerGraph() {
+        const rect = powerCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        powerCtx.clearRect(0, 0, w, h);
+
+        const padL = 6;
+        const padR = 6;
+        const padT = 6;
+        const padB = 6;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        const span = state.zoomTicks;
+        const cutoff = state.tick - span;
+        const minMa = CPU_CURRENT_SLEEP_MA;
+        const maxMa = CPU_CURRENT_ACTIVE_MA;
+        const range = maxMa - minMa || 1;
+        const yFor = (ma) => padT + gh - ((ma - minMa) / range) * gh;
+
+        powerCtx.beginPath();
+        let started = false;
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const ma = s.runningTaskId === "IDLE" ? CPU_CURRENT_SLEEP_MA : CPU_CURRENT_ACTIVE_MA;
+          const x0 = padL + gw * ((s.tick - 1 - cutoff) / span);
+          const x1 = padL + gw * ((s.tick - cutoff) / span);
+          const y = yFor(ma);
+          if (!started) {
+            powerCtx.moveTo(x0, y);
+            started = true;
+          } else {
+            powerCtx.lineTo(x0, y);
+          }
+          powerCtx.lineTo(x1, y);
+        }
+        if (started) {
+          powerCtx.strokeStyle = themeColor("--orange");
+          powerCtx.lineWidth = 1.5;
+          powerCtx.stroke();
+        }
+
+        powerCtx.strokeStyle = themeColor("--grid-line-strong");
+        powerCtx.lineWidth = 1;
+        powerCtx.strokeRect(padL, padT, gw, gh);
       }
 
       // ---- Main loop (auto-play) ----
