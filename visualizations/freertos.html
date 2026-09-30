@@ -556,8 +556,10 @@
         are blocked at the same time &mdash; which will happen constantly
         once they're running on different periods &mdash; there is
         nothing else at priority 1 to run, so the scheduler falls back to
-        the idle task. It just spins, tick after tick, doing nothing,
-        until one of the delays expires. The instant that happens, the
+        the idle task. It just calls <code>enter_low_power()</code>
+        (an <code>__WFI()</code> &mdash; Wait For Interrupt &mdash; under
+        the hood) tick after tick, letting the core sleep until something
+        happens, until one of the delays expires. The instant that happens, the
         newly-ready task <strong>preempts</strong> idle immediately (idle
         never gets to choose whether to give up the CPU &mdash; anything
         higher priority always wins) and resumes exactly where it left
@@ -649,7 +651,7 @@
       const IDLE_CODE = [
         { text: "for (;;)", exec: false },
         { text: "{", exec: false },
-        { text: "    /* nothing else ready to run */", exec: true },
+        { text: "    enter_low_power(); /* __WFI() */", exec: true },
         { text: "}", exec: false },
       ];
 
