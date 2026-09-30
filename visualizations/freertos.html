@@ -257,7 +257,7 @@
       .canvas-wrap {
         position: relative;
         width: 100%;
-        height: 150px;
+        height: 75px;
       }
 
       canvas {
@@ -337,7 +337,7 @@
 
       .control-columns {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(3, 1fr);
         gap: 18px;
       }
 
@@ -403,7 +403,7 @@
       }
 
       #resetBtn {
-        width: 100%;
+        flex: 1;
         background: transparent;
         border: 1px solid var(--red);
         color: var(--red);
@@ -461,7 +461,31 @@
     <h1>FreeRTOS Scheduler Visualizer</h1>
     <div class="subtitle">
       Single-core, two tasks, one idle task &mdash; step through exactly what
-      the scheduler does every time a task calls vTaskDelay().
+      the scheduler does every time a task blocks on vTaskDelay() or
+      hal::delay().
+    </div>
+
+    <div class="panel">
+      <h2>Controls</h2>
+      <div class="control-columns">
+        <div class="control-group">
+          <label for="delayA">Task A: vTaskDelay when SW1 is up (ms = ticks)</label>
+          <input type="number" id="delayA" min="1" max="5000" step="1" value="20" />
+        </div>
+        <div class="control-group">
+          <label for="delayAFast">Task A: vTaskDelay while SW1 is held (ms = ticks)</label>
+          <input type="number" id="delayAFast" min="1" max="5000" step="1" value="4" />
+        </div>
+        <div class="control-group">
+          <label for="delayB">Task B: blink delay (ms = ticks)</label>
+          <input type="number" id="delayB" min="1" max="5000" step="1" value="10" />
+        </div>
+      </div>
+      <div class="transport-row">
+        <button id="stepBtn">Step &#9658;|</button>
+        <button id="runBtn">Run</button>
+        <button id="resetBtn">Reset</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -531,29 +555,6 @@
       </div>
     </div>
 
-    <div class="panel">
-      <h2>Controls</h2>
-      <div class="control-columns">
-        <div class="control-group">
-          <label for="delayA">Task A: vTaskDelay when SW1 is up (ms = ticks)</label>
-          <input type="number" id="delayA" min="1" max="5000" step="1" value="20" />
-        </div>
-        <div class="control-group">
-          <label for="delayAFast">Task A: vTaskDelay while SW1 is held (ms = ticks)</label>
-          <input type="number" id="delayAFast" min="1" max="5000" step="1" value="4" />
-        </div>
-        <div class="control-group">
-          <label for="delayB">Task B: vTaskDelay argument (ms = ticks)</label>
-          <input type="number" id="delayB" min="1" max="5000" step="1" value="14" />
-        </div>
-      </div>
-      <div class="transport-row" style="margin-bottom: 12px">
-        <button id="stepBtn">Step &#9658;|</button>
-        <button id="runBtn">Run</button>
-      </div>
-      <button id="resetBtn">Reset</button>
-    </div>
-
     <div class="how-it-works">
       <div class="label">How it works</div>
       <p>
@@ -567,13 +568,13 @@
         when nothing else can.
       </p>
       <p>
-        <strong>vTaskDelay() blocks, it doesn't busy-wait.</strong> When a
-        task calls <code>vTaskDelay(N)</code>, it voluntarily gives up the
-        CPU for the next N ticks &mdash; it moves to the
-        <strong>BLOCKED</strong> state, and the scheduler is free to run
-        something else. The task's code stays paused exactly at that call
-        (the dim yellow marker in its code panel) until N ticks have
-        actually elapsed, at which point it becomes ready again.
+        <strong>A blocking delay doesn't busy-wait.</strong> When a task
+        calls <code>vTaskDelay(N)</code> or <code>hal::delay(clock, N)</code>,
+        it voluntarily gives up the CPU for the next N ticks &mdash; it
+        moves to the <strong>BLOCKED</strong> state, and the scheduler is
+        free to run something else. The task's code stays paused exactly at
+        that call (the dim yellow marker in its code panel) until N ticks
+        have actually elapsed, at which point it becomes ready again.
       </p>
       <p>
         <strong>Where idle comes in.</strong> If both Task A and Task B
@@ -590,13 +591,17 @@
         off, right after its <code>vTaskDelay()</code> call.
       </p>
       <p>
-        <strong>What each task is actually doing.</strong> Both Task A and
-        Task B toggle their own GPIO pin every time they wake up -- watch
-        the small LED next to each task's name flip on and off in step
-        with its highlighted toggle line. The default delays (20 and 14
-        ticks) are deliberately small so a handful of full wake/toggle/
-        sleep cycles happen quickly; type in something like 500 to see
-        the same thing play out on more realistic real-world numbers.
+        <strong>What each task is actually doing.</strong> Task A toggles
+        its LED with <code>led_a.level(...)</code> every time it wakes up.
+        Task B runs a fixed pattern with <code>led_b.level(...)</code> and
+        <code>hal::delay(clock, ...)</code> &mdash; three quick blinks
+        (level, delay, level, delay, level, delay) followed by one longer
+        pause (level, delay) before it repeats, all using the same
+        libhal-style API instead of a raw GPIO toggle. Watch the small LED
+        next to each task's name light up in step with its highlighted
+        line. The default delays are deliberately small so a handful of
+        full wake/blink/sleep cycles happen quickly; type in bigger numbers
+        to see the same thing play out on more realistic real-world scales.
       </p>
       <p>
         <strong>Task A branches on a button.</strong> After toggling its
@@ -677,21 +682,11 @@
       // ---- Task model ----
       // Each task's code is a fixed array of display lines; only some of
       // them are "executable" (ever get a turn as the current line) --
-      // the for(;;) and brace lines are shown for real C correctness but
+      // loop/brace/if/else lines are shown for real C++ correctness but
       // never themselves highlighted, since nothing meaningful happens
       // when "executing" them in this simplified model.
-      function buildCode(workLine, delayMs) {
-        return [
-          { text: "for (;;)", exec: false },
-          { text: "{", exec: false },
-          { text: "    " + workLine, exec: true, isToggle: true },
-          { text: "    vTaskDelay(pdMS_TO_TICKS(" + delayMs + "));", exec: true, isDelay: true },
-          { text: "}", exec: false },
-        ];
-      }
-
       const IDLE_CODE = [
-        { text: "for (;;)", exec: false },
+        { text: "while (true)", exec: false },
         { text: "{", exec: false },
         { text: "    enter_low_power(); /* __WFI() */", exec: true },
         { text: "}", exec: false },
@@ -704,11 +699,17 @@
       // not taken, exactly like a real debugger stepping over an if/else.
       function buildTaskACode(fastMs, normalMs) {
         return [
-          { text: "for (;;)", exec: false },
+          { text: "while (true)", exec: false },
           { text: "{", exec: false },
-          { text: "    HAL_GPIO_TogglePin(LED_A_PORT, LED_A_PIN);", exec: true, isToggle: true },
-          { text: "    if (button_pressed()) vTaskDelay(pdMS_TO_TICKS(" + fastMs + "));", exec: true, isDelay: true, delayMs: fastMs },
-          { text: "    else vTaskDelay(pdMS_TO_TICKS(" + normalMs + "));", exec: true, isDelay: true, delayMs: normalMs },
+          { text: "    led_a.level(led_a_on = !led_a_on);", exec: true, isToggle: true },
+          { text: "    if (button_pressed())", exec: false },
+          { text: "    {", exec: false },
+          { text: "        vTaskDelay(pdMS_TO_TICKS(" + fastMs + "));", exec: true, isDelay: true, delayMs: fastMs },
+          { text: "    }", exec: false },
+          { text: "    else", exec: false },
+          { text: "    {", exec: false },
+          { text: "        vTaskDelay(pdMS_TO_TICKS(" + normalMs + "));", exec: true, isDelay: true, delayMs: normalMs },
+          { text: "    }", exec: false },
           { text: "}", exec: false },
         ];
       }
@@ -719,9 +720,31 @@
       // call returns. advancePc() falls back to the normal linear/wrap
       // scan (nextExecLine) whenever this returns null.
       function taskABranch(task, fromIndex) {
-        if (fromIndex === 2) return state.buttonHeld ? 3 : 4;
-        if (fromIndex === 3) return 2;
+        if (fromIndex === 2) return state.buttonHeld ? 5 : 9;
+        if (fromIndex === 5) return 2;
         return null;
+      }
+
+      // Task B just runs a fixed blink pattern -- three quick blinks
+      // followed by a longer pause -- using the libhal-style level()/
+      // delay() API instead of a GPIO toggle. Purely linear, so the
+      // generic nextExecLine() wrap (no custom branchFn) is all it needs.
+      function buildTaskBCode(shortMs) {
+        const longMs = shortMs * 10;
+        return [
+          { text: "while (true)", exec: false },
+          { text: "{", exec: false },
+          { text: "    using namespace std::chrono_literals;", exec: false },
+          { text: "    led_b.level(false);", exec: true, ledValue: false },
+          { text: "    hal::delay(clock, " + shortMs + "ms);", exec: true, isDelay: true, delayMs: shortMs },
+          { text: "    led_b.level(true);", exec: true, ledValue: true },
+          { text: "    hal::delay(clock, " + shortMs + "ms);", exec: true, isDelay: true, delayMs: shortMs },
+          { text: "    led_b.level(false);", exec: true, ledValue: false },
+          { text: "    hal::delay(clock, " + shortMs + "ms);", exec: true, isDelay: true, delayMs: shortMs },
+          { text: "    led_b.level(true);", exec: true, ledValue: true },
+          { text: "    hal::delay(clock, " + longMs + "ms);", exec: true, isDelay: true, delayMs: longMs },
+          { text: "}", exec: false },
+        ];
       }
 
       function advancePc(task, fromIndex) {
@@ -747,21 +770,6 @@
         buttonHeld: false,
       };
 
-      function makeTask(id, name, priority, workLine, delayMs) {
-        return {
-          id,
-          name,
-          priority,
-          code: buildCode(workLine, delayMs),
-          pc: 2, // index of the first executable line (the work line)
-          blocked: false,
-          wakeTick: 0,
-          delayMs,
-          led: false,
-          pendingAdvance: false,
-        };
-      }
-
       const taskA = {
         id: "A",
         name: "Task A",
@@ -776,7 +784,18 @@
         pendingAdvance: false,
         branchFn: taskABranch,
       };
-      const taskB = makeTask("B", "Task B", 1, "HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);", 14);
+      const taskB = {
+        id: "B",
+        name: "Task B",
+        priority: 1,
+        code: buildTaskBCode(10),
+        pc: 3, // index of the first executable line (past the using-directive)
+        blocked: false,
+        wakeTick: 0,
+        delayShortMs: 10,
+        led: false,
+        pendingAdvance: false,
+      };
       const idleTask = {
         id: "IDLE",
         name: "Idle Task",
@@ -800,7 +819,7 @@
         taskA.wakeTick = 0;
         taskA.led = false;
         taskA.pendingAdvance = false;
-        taskB.pc = 2;
+        taskB.pc = 3;
         taskB.blocked = false;
         taskB.wakeTick = 0;
         taskB.led = false;
@@ -872,6 +891,7 @@
           running.wakeTick = state.tick + (line.delayMs != null ? line.delayMs : running.delayMs);
         } else {
           if (line.isToggle) running.led = !running.led;
+          else if (line.ledValue !== undefined) running.led = line.ledValue;
           running.pendingAdvance = true;
         }
 
@@ -1075,8 +1095,8 @@
       delayBInput.addEventListener("input", () => {
         const v = parseInt(delayBInput.value, 10);
         if (Number.isFinite(v) && v > 0) {
-          taskB.delayMs = v;
-          taskB.code = buildCode("HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);", taskB.delayMs);
+          taskB.delayShortMs = v;
+          taskB.code = buildTaskBCode(taskB.delayShortMs);
           render();
         }
       });
@@ -1127,12 +1147,12 @@
         document.getElementById("zoomVal").textContent = 80;
         delayAInput.value = 20;
         delayAFastInput.value = 4;
-        delayBInput.value = 14;
+        delayBInput.value = 10;
         taskA.delayNormalMs = 20;
         taskA.delayFastMs = 4;
-        taskB.delayMs = 14;
+        taskB.delayShortMs = 10;
         taskA.code = buildTaskACode(taskA.delayFastMs, taskA.delayNormalMs);
-        taskB.code = buildCode("HAL_GPIO_TogglePin(LED_B_PORT, LED_B_PIN);", taskB.delayMs);
+        taskB.code = buildTaskBCode(taskB.delayShortMs);
         setButtonHeld(false);
         resetSim();
         render();
