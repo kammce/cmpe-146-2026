@@ -96,6 +96,37 @@
         border-bottom: 1px solid var(--panel-border);
       }
 
+      .panel-header-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+        margin-bottom: 12px;
+      }
+
+      .panel-header-row h2 {
+        margin: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      .unit-note {
+        color: var(--dim);
+        font-size: 0.75rem;
+        font-weight: normal;
+      }
+
+      .panel-header-row .transport-row #stepBtn,
+      .panel-header-row .transport-row #runBtn,
+      .panel-header-row .transport-row #resetBtn {
+        flex: 0 0 auto;
+        padding: 6px 12px;
+        font-size: 0.8rem;
+      }
+
       /* ---- Task code panels ---- */
       .task-columns {
         display: grid;
@@ -253,6 +284,17 @@
         text-align: center;
       }
 
+      .power-readout {
+        margin-top: 8px;
+        padding: 6px 8px;
+        font-size: 0.75rem;
+        text-align: center;
+        color: var(--orange);
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+      }
+
       /* ---- Gantt trace ---- */
       .canvas-wrap {
         position: relative;
@@ -332,7 +374,27 @@
       }
 
       .control-group {
-        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .control-group label {
+        display: inline-block;
+        margin-bottom: 0;
+        min-width: 0;
+        flex: 1 1 auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .control-group input[type="number"] {
+        width: 68px;
+        flex: 0 0 auto;
+        text-align: center;
       }
 
       .control-columns {
@@ -459,32 +521,29 @@
   <body>
     <button id="themeToggleBtn" class="theme-toggle">☀️ Light Theme</button>
     <h1>FreeRTOS Scheduler Visualizer</h1>
-    <div class="subtitle">
-      Single-core, two tasks, one idle task &mdash; step through exactly what
-      the scheduler does every time a task blocks on vTaskDelay() or
-      hal::delay().
-    </div>
 
     <div class="panel">
-      <h2>Controls</h2>
+      <div class="panel-header-row">
+        <h2>Controls <span class="unit-note">(ms = ticks)</span></h2>
+        <div class="transport-row">
+          <button id="stepBtn">Step &#9658;|</button>
+          <button id="runBtn">Run</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+      </div>
       <div class="control-columns">
         <div class="control-group">
-          <label for="delayA">Task A: vTaskDelay when SW1 is up (ms = ticks)</label>
+          <label for="delayA">Task A: Button released</label>
           <input type="number" id="delayA" min="1" max="5000" step="1" value="20" />
         </div>
         <div class="control-group">
-          <label for="delayAFast">Task A: vTaskDelay while SW1 is held (ms = ticks)</label>
+          <label for="delayAFast">Task A: Button pressed</label>
           <input type="number" id="delayAFast" min="1" max="5000" step="1" value="4" />
         </div>
         <div class="control-group">
-          <label for="delayB">Task B: blink delay (ms = ticks)</label>
+          <label for="delayB">Task B: Blink</label>
           <input type="number" id="delayB" min="1" max="5000" step="1" value="10" />
         </div>
-      </div>
-      <div class="transport-row">
-        <button id="stepBtn">Step &#9658;|</button>
-        <button id="runBtn">Run</button>
-        <button id="resetBtn">Reset</button>
       </div>
     </div>
 
@@ -522,6 +581,9 @@
           <div class="task-priority">Priority 0 (lowest)</div>
           <div class="code" id="codeIdle"></div>
           <div class="block-countdown" id="countdownIdle">&nbsp;</div>
+          <div class="power-readout" id="powerReadout">
+            CPU current draw: <span id="currentDrawVal">4.2 mA</span>
+          </div>
         </div>
       </div>
     </div>
@@ -568,13 +630,13 @@
         when nothing else can.
       </p>
       <p>
-        <strong>A blocking delay doesn't busy-wait.</strong> When a task
-        calls <code>vTaskDelay(N)</code> or <code>hal::delay(clock, N)</code>,
-        it voluntarily gives up the CPU for the next N ticks &mdash; it
-        moves to the <strong>BLOCKED</strong> state, and the scheduler is
-        free to run something else. The task's code stays paused exactly at
-        that call (the dim yellow marker in its code panel) until N ticks
-        have actually elapsed, at which point it becomes ready again.
+        <strong>vTaskDelay() blocks, it doesn't busy-wait.</strong> When a
+        task calls <code>vTaskDelay(N)</code>, it voluntarily gives up the
+        CPU for the next N ticks &mdash; it moves to the
+        <strong>BLOCKED</strong> state, and the scheduler is free to run
+        something else. The task's code stays paused exactly at that call
+        (the dim yellow marker in its code panel) until N ticks have
+        actually elapsed, at which point it becomes ready again.
       </p>
       <p>
         <strong>Where idle comes in.</strong> If both Task A and Task B
@@ -588,20 +650,23 @@
         newly-ready task <strong>preempts</strong> idle immediately (idle
         never gets to choose whether to give up the CPU &mdash; anything
         higher priority always wins) and resumes exactly where it left
-        off, right after its <code>vTaskDelay()</code> call.
+        off, right after its <code>vTaskDelay()</code> call. The idle box
+        also shows a rough CPU current draw, since a sleeping core in WFI
+        genuinely pulls less current than one actively fetching
+        instructions (LEDs aren't part of that number, just the CPU core).
       </p>
       <p>
-        <strong>What each task is actually doing.</strong> Task A toggles
-        its LED with <code>led_a.level(...)</code> every time it wakes up.
-        Task B runs a fixed pattern with <code>led_b.level(...)</code> and
-        <code>hal::delay(clock, ...)</code> &mdash; three quick blinks
-        (level, delay, level, delay, level, delay) followed by one longer
-        pause (level, delay) before it repeats, all using the same
-        libhal-style API instead of a raw GPIO toggle. Watch the small LED
-        next to each task's name light up in step with its highlighted
-        line. The default delays are deliberately small so a handful of
-        full wake/blink/sleep cycles happen quickly; type in bigger numbers
-        to see the same thing play out on more realistic real-world scales.
+        <strong>What each task is actually doing.</strong> Both tasks
+        toggle their own LED the same way, by reading the output pin's own
+        driven state and writing back the opposite of it:
+        <code>led.level(not led.level())</code>. Task A does this once per
+        wake; Task B does it four times per lap &mdash; three quick blinks
+        followed by one longer pause &mdash; before it repeats. Watch the
+        small LED next to each task's name light up in step with its
+        highlighted line. The default delays are deliberately small so a
+        handful of full wake/blink/sleep cycles happen quickly; type in
+        bigger numbers to see the same thing play out on more realistic
+        real-world scales.
       </p>
       <p>
         <strong>Task A branches on a button.</strong> After toggling its
@@ -692,6 +757,13 @@
         { text: "}", exec: false },
       ];
 
+      // Rough CPU current draw for the power readout in the idle task box
+      // -- just two fixed numbers standing in for "core clocked and
+      // fetching instructions" vs "core asleep in WFI". LEDs aren't
+      // factored in here, only the CPU itself.
+      const CPU_CURRENT_ACTIVE_MA = 18.5;
+      const CPU_CURRENT_SLEEP_MA = 4.2;
+
       // Task A branches on a simulated button read: held SW1 blinks the
       // LED much faster (short delay) than the normal idle blink rate.
       // Both vTaskDelay() calls live in the same function -- only one of
@@ -701,7 +773,7 @@
         return [
           { text: "while (true)", exec: false },
           { text: "{", exec: false },
-          { text: "    led_a.level(led_a_on = !led_a_on);", exec: true, isToggle: true },
+          { text: "    led_a.level(not led_a.level());", exec: true, isToggle: true },
           { text: "    if (button_pressed())", exec: false },
           { text: "    {", exec: false },
           { text: "        vTaskDelay(pdMS_TO_TICKS(" + fastMs + "));", exec: true, isDelay: true, delayMs: fastMs },
@@ -726,23 +798,23 @@
       }
 
       // Task B just runs a fixed blink pattern -- three quick blinks
-      // followed by a longer pause -- using the libhal-style level()/
-      // delay() API instead of a GPIO toggle. Purely linear, so the
-      // generic nextExecLine() wrap (no custom branchFn) is all it needs.
+      // followed by a longer pause -- toggling its LED by reading back
+      // the output pin's own driven state, same as Task A. Purely
+      // linear, so the generic nextExecLine() wrap (no custom branchFn)
+      // is all it needs.
       function buildTaskBCode(shortMs) {
         const longMs = shortMs * 10;
         return [
           { text: "while (true)", exec: false },
           { text: "{", exec: false },
-          { text: "    using namespace std::chrono_literals;", exec: false },
-          { text: "    led_b.level(false);", exec: true, ledValue: false },
-          { text: "    hal::delay(clock, " + shortMs + "ms);", exec: true, isDelay: true, delayMs: shortMs },
-          { text: "    led_b.level(true);", exec: true, ledValue: true },
-          { text: "    hal::delay(clock, " + shortMs + "ms);", exec: true, isDelay: true, delayMs: shortMs },
-          { text: "    led_b.level(false);", exec: true, ledValue: false },
-          { text: "    hal::delay(clock, " + shortMs + "ms);", exec: true, isDelay: true, delayMs: shortMs },
-          { text: "    led_b.level(true);", exec: true, ledValue: true },
-          { text: "    hal::delay(clock, " + longMs + "ms);", exec: true, isDelay: true, delayMs: longMs },
+          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
+          { text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));", exec: true, isDelay: true, delayMs: shortMs },
+          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
+          { text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));", exec: true, isDelay: true, delayMs: shortMs },
+          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
+          { text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));", exec: true, isDelay: true, delayMs: shortMs },
+          { text: "    led_b.level(not led_b.level());", exec: true, isToggle: true },
+          { text: "    vTaskDelay(pdMS_TO_TICKS(" + longMs + "));", exec: true, isDelay: true, delayMs: longMs },
           { text: "}", exec: false },
         ];
       }
@@ -789,7 +861,7 @@
         name: "Task B",
         priority: 1,
         code: buildTaskBCode(10),
-        pc: 3, // index of the first executable line (past the using-directive)
+        pc: 2,
         blocked: false,
         wakeTick: 0,
         delayShortMs: 10,
@@ -819,7 +891,7 @@
         taskA.wakeTick = 0;
         taskA.led = false;
         taskA.pendingAdvance = false;
-        taskB.pc = 3;
+        taskB.pc = 2;
         taskB.blocked = false;
         taskB.wakeTick = 0;
         taskB.led = false;
@@ -891,7 +963,6 @@
           running.wakeTick = state.tick + (line.delayMs != null ? line.delayMs : running.delayMs);
         } else {
           if (line.isToggle) running.led = !running.led;
-          else if (line.ledValue !== undefined) running.led = line.ledValue;
           running.pendingAdvance = true;
         }
 
@@ -962,6 +1033,11 @@
             countdownEl.innerHTML = "&nbsp;";
           }
         }
+
+        const idleRunning = runningTaskId === "IDLE";
+        const currentMa = idleRunning ? CPU_CURRENT_SLEEP_MA : CPU_CURRENT_ACTIVE_MA;
+        document.getElementById("currentDrawVal").textContent =
+          currentMa.toFixed(1) + " mA (" + (idleRunning ? "WFI sleep" : "active") + ")";
 
         drawGantt();
         updateButtonAvailability();
