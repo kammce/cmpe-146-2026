@@ -1,0 +1,1522 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FreeRTOS Scheduler Visualizer</title>
+    <style>
+      :root {
+        --bg: #0b0f1a;
+        --panel: #121828;
+        --panel-alt: #0e1424;
+        --panel-border: #262f4a;
+        --cyan: #22d3ee;
+        --orange: #fb923c;
+        --green: #86efac;
+        --red: #f87171;
+        --yellow: #fde047;
+        --text: #e5e9f5;
+        --dim: #8b93ad;
+        --canvas-bg: #050810;
+        --grid-line: #16203a;
+        --grid-line-strong: #3a4468;
+        --how-bg: #1a1206;
+        --how-border: #4a3418;
+      }
+
+      :root[data-theme="light"] {
+        --bg: #f3f4f9;
+        --panel: #ffffff;
+        --panel-alt: #eef0f8;
+        --panel-border: #ccd1e3;
+        --cyan: #0e7490;
+        --orange: #c2410c;
+        --green: #15803d;
+        --red: #b91c1c;
+        --yellow: #ca8a04;
+        --text: #1b2033;
+        --dim: #545e7c;
+        --canvas-bg: #ffffff;
+        --grid-line: #e1e4f0;
+        --grid-line-strong: #b6bcd8;
+        --how-bg: #fff4e3;
+        --how-border: #e3ab5f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "SFMono-Regular", "Consolas", "Courier New", monospace;
+        margin: 0;
+        padding: 24px;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--green);
+        font-size: 2rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: var(--dim);
+        margin-bottom: 24px;
+      }
+
+      .theme-toggle {
+        display: block;
+        width: fit-content;
+        margin: 0 0 12px auto;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        color: var(--text);
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+        padding: 16px;
+        max-width: 1300px;
+        margin: 0 auto 18px;
+      }
+
+      .panel h2 {
+        font-size: 1rem;
+        color: var(--cyan);
+        margin: 0 0 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .panel-header-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--panel-border);
+        margin-bottom: 12px;
+      }
+
+      .panel-header-row h2 {
+        margin: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      .unit-note {
+        color: var(--dim);
+        font-size: 0.75rem;
+        font-weight: normal;
+      }
+
+      .panel-header-row .transport-row #stepBtn,
+      .panel-header-row .transport-row #runBtn,
+      .panel-header-row .transport-row #resetBtn {
+        flex: 0 0 auto;
+        padding: 6px 12px;
+        font-size: 0.8rem;
+      }
+
+      /* ---- Task code panels ---- */
+      .task-columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 14px;
+      }
+
+      @media (max-width: 900px) {
+        .task-columns {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .task-box {
+        min-width: 0; /* let this grid item shrink below its code lines'
+        intrinsic (white-space: pre) width, so .code's own horizontal
+        scroll -- not the whole page -- absorbs any overflow */
+        background: var(--panel-alt);
+        border: 2px solid var(--panel-border);
+        border-radius: 8px;
+        padding: 10px;
+        transition:
+          border-color 0.15s linear,
+          box-shadow 0.15s linear;
+      }
+
+      .task-box.running {
+        border-color: var(--yellow);
+        box-shadow: 0 0 10px 1px rgba(253, 224, 71, 0.35);
+      }
+
+      .task-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 6px;
+      }
+
+      .task-name {
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+
+      .task-name.a {
+        color: var(--cyan);
+      }
+      .task-name.b {
+        color: var(--orange);
+      }
+      .task-name.idle {
+        color: var(--dim);
+      }
+
+      .led {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        margin-left: 6px;
+        background: var(--panel-border);
+        border: 1px solid var(--panel-border);
+        vertical-align: middle;
+        transition:
+          background-color 0.1s linear,
+          box-shadow 0.1s linear;
+      }
+
+      .led.on.a {
+        background: var(--cyan);
+        border-color: var(--cyan);
+        box-shadow: 0 0 8px 2px var(--cyan);
+      }
+
+      .led.on.b {
+        background: var(--orange);
+        border-color: var(--orange);
+        box-shadow: 0 0 8px 2px var(--orange);
+      }
+
+      .task-state {
+        font-size: 0.68rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: bold;
+        white-space: nowrap;
+      }
+
+      .task-state.running {
+        background: var(--yellow);
+        color: #241d00;
+      }
+
+      .task-state.blocked {
+        background: var(--panel-border);
+        color: var(--dim);
+      }
+
+      .task-priority {
+        font-size: 0.65rem;
+        color: var(--dim);
+        margin-bottom: 6px;
+      }
+
+      .code {
+        background: var(--canvas-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 4px 0;
+        font-size: 0.76rem;
+        line-height: 1.55;
+        overflow-x: auto;
+      }
+
+      .code-line {
+        display: flex;
+        white-space: pre;
+        padding: 0 8px;
+      }
+
+      .code-line .ln {
+        color: var(--dim);
+        opacity: 0.5;
+        width: 22px;
+        flex: 0 0 22px;
+        text-align: right;
+        margin-right: 10px;
+        user-select: none;
+      }
+
+      .code-line.current {
+        background: var(--yellow);
+        color: #241d00;
+        font-weight: bold;
+      }
+
+      .code-line.current .ln {
+        color: #241d00;
+        opacity: 0.6;
+      }
+
+      .code-line.paused-here {
+        background: rgba(253, 224, 71, 0.18);
+        border-left: 3px solid var(--yellow);
+        padding-left: 5px;
+      }
+
+      .code-line.paused-here .ln {
+        opacity: 0.7;
+      }
+
+      .block-countdown {
+        margin-top: 6px;
+        font-size: 0.72rem;
+        color: var(--dim);
+        text-align: center;
+      }
+
+      .power-readout {
+        margin-top: 8px;
+        padding: 6px 8px;
+        font-size: 0.75rem;
+        text-align: center;
+        color: var(--orange);
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .power-graph-wrap {
+        position: relative;
+        width: 100%;
+        height: 54px;
+        margin-top: 6px;
+      }
+
+      /* ---- Gantt trace ---- */
+      .canvas-wrap {
+        position: relative;
+        width: 100%;
+        height: 75px;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--canvas-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        display: block;
+      }
+
+      .legend {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        margin-top: 10px;
+        font-size: 0.78rem;
+        color: var(--dim);
+        flex-wrap: wrap;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .swatch {
+        width: 14px;
+        height: 10px;
+        display: inline-block;
+        border-radius: 2px;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+        align-items: flex-end;
+      }
+
+      .toolbar-group {
+        flex: 1;
+        min-width: 150px;
+      }
+
+      .toolbar-group label {
+        font-size: 0.8rem;
+      }
+
+      .tick-readout {
+        text-align: center;
+        font-size: 0.95rem;
+        font-weight: bold;
+        padding: 8px 10px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        color: var(--cyan);
+      }
+
+      /* ---- Controls ---- */
+      label {
+        display: block;
+        font-size: 0.85rem;
+        margin-bottom: 6px;
+        color: var(--text);
+      }
+
+      .control-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .control-group label {
+        display: inline-block;
+        margin-bottom: 0;
+        min-width: 0;
+        flex: 1 1 auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .control-group input[type="number"] {
+        width: 68px;
+        flex: 0 0 auto;
+        text-align: center;
+      }
+
+      .control-columns {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      @media (max-width: 640px) {
+        .control-columns {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      input[type="number"] {
+        width: 100%;
+        background: var(--panel-alt);
+        color: var(--text);
+        border: 1px solid var(--panel-border);
+        border-radius: 6px;
+        padding: 8px;
+        font-family: inherit;
+        font-size: 0.9rem;
+      }
+
+      input[type="number"]:focus {
+        outline: none;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--cyan);
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+        border-radius: 6px;
+        padding: 9px 14px;
+        font-size: 0.85rem;
+        background: var(--panel-alt);
+        border: 1px solid var(--panel-border);
+        color: var(--text);
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+
+      .transport-row {
+        display: flex;
+        gap: 10px;
+      }
+
+      #stepBtn,
+      #runBtn {
+        flex: 1;
+        background: linear-gradient(135deg, #22d3ee, #3b82f6);
+        border: none;
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      #runBtn.running {
+        background: linear-gradient(135deg, #fb923c, #f87171);
+        color: #2a0505;
+      }
+
+      #resetBtn {
+        flex: 1;
+        background: transparent;
+        border: 1px solid var(--red);
+        color: var(--red);
+      }
+
+      #resetBtn:hover {
+        background: rgba(248, 113, 113, 0.15);
+      }
+
+      .user-button {
+        width: 100%;
+        margin-top: 8px;
+        user-select: none;
+      }
+
+      .user-button:hover {
+        border-color: var(--cyan);
+      }
+
+      .user-button.held {
+        background: var(--cyan);
+        border-color: var(--cyan);
+        color: #04101c;
+        font-weight: bold;
+      }
+
+      .how-it-works {
+        max-width: 1300px;
+        margin: 18px auto 0;
+        padding: 14px 18px;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        background: var(--how-bg);
+        border: 1px solid var(--how-border);
+        border-radius: 6px;
+      }
+
+      .how-it-works .label {
+        color: var(--orange);
+        font-size: 0.8rem;
+        margin-bottom: 10px;
+      }
+
+      .how-it-works-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 14px;
+      }
+
+      .how-tile {
+        background: var(--panel-alt);
+        border: 1px solid var(--how-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        min-width: 0;
+      }
+
+      .how-tile h3 {
+        margin: 0 0 6px;
+        font-size: 0.85rem;
+        color: var(--orange);
+      }
+
+      .how-tile p {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <button id="themeToggleBtn" class="theme-toggle">☀️ Light Theme</button>
+    <h1>FreeRTOS Scheduler Visualizer</h1>
+
+    <div class="panel">
+      <div class="panel-header-row">
+        <h2>Controls <span class="unit-note">(ms = ticks)</span></h2>
+        <div class="transport-row">
+          <button id="stepBtn">Step &#9658;|</button>
+          <button id="runBtn">Run</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+      </div>
+      <div class="control-columns">
+        <div class="control-group">
+          <label for="delayA">Task A: Button released</label>
+          <input
+            type="number"
+            id="delayA"
+            min="1"
+            max="5000"
+            step="1"
+            value="20"
+          />
+        </div>
+        <div class="control-group">
+          <label for="delayAFast">Task A: Button pressed</label>
+          <input
+            type="number"
+            id="delayAFast"
+            min="1"
+            max="5000"
+            step="1"
+            value="4"
+          />
+        </div>
+        <div class="control-group">
+          <label for="delayB">Task B: Blink</label>
+          <input
+            type="number"
+            id="delayB"
+            min="1"
+            max="5000"
+            step="1"
+            value="10"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Tasks</h2>
+      <div class="task-columns">
+        <div class="task-box" id="taskBoxA">
+          <div class="task-header">
+            <span class="task-name a"
+              >Task A <span class="led a" id="ledA" title="LED_A"></span
+            ></span>
+            <span class="task-state" id="stateA">RUNNING</span>
+          </div>
+          <div class="task-priority">Priority 1</div>
+          <div class="code" id="codeA"></div>
+          <div class="block-countdown" id="countdownA"></div>
+          <button
+            id="userButton"
+            class="user-button"
+            title="Simulated GPIO input pin, read by button_pressed()"
+          >
+            Hold SW1 (fast blink)
+          </button>
+        </div>
+
+        <div class="task-box" id="taskBoxB">
+          <div class="task-header">
+            <span class="task-name b"
+              >Task B <span class="led b" id="ledB" title="LED_B"></span
+            ></span>
+            <span class="task-state" id="stateB">BLOCKED</span>
+          </div>
+          <div class="task-priority">Priority 1</div>
+          <div class="code" id="codeB"></div>
+          <div class="block-countdown" id="countdownB"></div>
+        </div>
+
+        <div class="task-box" id="taskBoxIdle">
+          <div class="task-header">
+            <span class="task-name idle">Idle Task</span>
+            <span class="task-state" id="stateIdle">BLOCKED</span>
+          </div>
+          <div class="task-priority">Priority 0 (lowest)</div>
+          <div class="code" id="codeIdle"></div>
+          <div class="block-countdown" id="countdownIdle">&nbsp;</div>
+          <div class="power-readout" id="powerReadout">
+            <div>CPU current draw: <span id="currentDrawVal">4.2 mA</span></div>
+            <div>
+              Energy consumed: <span id="energyVal">0.00 &micro;Wh</span>
+            </div>
+          </div>
+          <div class="power-graph-wrap">
+            <canvas id="powerCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Scheduler Trace</h2>
+      <div class="toolbar">
+        <div class="toolbar-group">
+          <label
+            >CPU Instruction Speed:
+            <span id="taskPaceVal">380</span> ms/line</label
+          >
+          <input
+            type="range"
+            id="taskPaceRange"
+            min="50"
+            max="1200"
+            step="10"
+            value="380"
+          />
+        </div>
+        <div class="toolbar-group">
+          <label
+            >Idle Fast-Forward Speed:
+            <span id="idlePaceVal">16</span> ms/tick</label
+          >
+          <input
+            type="range"
+            id="idlePaceRange"
+            min="1"
+            max="150"
+            step="1"
+            value="16"
+          />
+        </div>
+        <div class="toolbar-group">
+          <label>Graph Zoom: <span id="zoomVal">80</span> ticks</label>
+          <input
+            type="range"
+            id="zoomRange"
+            min="40"
+            max="600"
+            step="10"
+            value="80"
+          />
+        </div>
+      </div>
+
+      <div class="tick-readout">System Tick: <span id="tickVal">0</span></div>
+
+      <div class="canvas-wrap">
+        <canvas id="ganttCanvas"></canvas>
+      </div>
+      <div class="legend">
+        <span
+          ><span class="swatch" style="background: var(--cyan)"></span>Task A
+          running</span
+        >
+        <span
+          ><span class="swatch" style="background: var(--orange)"></span>Task B
+          running</span
+        >
+        <span
+          ><span class="swatch" style="background: var(--panel-border)"></span
+          >Idle running</span
+        >
+      </div>
+    </div>
+
+    <div class="how-it-works">
+      <div class="label">How it works</div>
+      <div class="how-it-works-grid">
+        <div class="how-tile">
+          <h3>One CPU, one running task</h3>
+          <p>
+            This is a single-core simulation: at any given tick, exactly one of
+            these three tasks actually owns the CPU (highlighted with a yellow
+            current-line marker, like a debugger's program counter), and it is
+            always the
+            <em>highest-priority task that is currently ready to run</em>. Task
+            A and Task B share priority 1; the built-in idle task always exists
+            at priority 0, the lowest possible, so it only ever runs when
+            nothing else can.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>vTaskDelay() blocks, it doesn't busy-wait</h3>
+          <p>
+            When a task calls <code>vTaskDelay(N)</code>, it voluntarily gives
+            up the CPU for the next N ticks &mdash; it moves to the
+            <strong>BLOCKED</strong> state, and the scheduler is free to run
+            something else. The task's code stays paused exactly at that call
+            (the dim yellow marker in its code panel) until N ticks have
+            actually elapsed, at which point it becomes ready again.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>Where idle comes in</h3>
+          <p>
+            If both Task A and Task B are blocked at the same time &mdash; which
+            will happen constantly once they're running on different periods
+            &mdash; there is nothing else at priority 1 to run, so the scheduler
+            falls back to the idle task. It just calls
+            <code>enter_low_power()</code> (an <code>__WFI()</code> &mdash; Wait
+            For Interrupt &mdash; under the hood) tick after tick, letting the
+            core sleep until something happens, until one of the delays expires.
+            The instant that happens, the newly-ready task
+            <strong>preempts</strong> idle immediately (idle never gets to
+            choose whether to give up the CPU &mdash; anything higher priority
+            always wins) and resumes exactly where it left off, right after its
+            <code>vTaskDelay()</code> call. The idle box also shows a rough CPU
+            current draw, a graph of it over time (0 mA at the bottom, so the
+            active/sleep gap is drawn to scale), and a running total of energy
+            consumed (assuming a 3.3V supply) so you can watch it accumulate
+            faster while Task A or B is busy than while the core is asleep in
+            WFI (LEDs aren't part of any of these numbers, just the CPU core).
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>What each task is actually doing</h3>
+          <p>
+            Both tasks toggle their own LED the same way, by reading the output
+            pin's own driven state and writing back the opposite of it:
+            <code>led.level(not led.level())</code>. Task A does this once per
+            wake; Task B does it four times per lap &mdash; three quick blinks
+            followed by one longer pause &mdash; before it repeats. Watch the
+            small LED next to each task's name light up in step with its
+            highlighted line. The default delays are deliberately small so a
+            handful of full wake/blink/sleep cycles happen quickly; type in
+            bigger numbers to see the same thing play out on more realistic
+            real-world scales.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>Task A branches on a button</h3>
+          <p>
+            After toggling its LED, Task A calls a made-up
+            <code>button_pressed()</code> to read a GPIO input pin and picks one
+            of <em>two</em> <code>vTaskDelay()</code> calls based on the result
+            -- the untaken branch just sits dim in the code panel, exactly like
+            stepping over an <code>if</code>/<code>else</code> in a real
+            debugger. Press and hold the <strong>Hold SW1</strong> button under
+            Task A's code to simulate pressing that pin: the LED starts blinking
+            much faster (a short vTaskDelay instead of the normal one), and
+            because Task A is now waking up far more often, it and Task B trade
+            the CPU back and forth much more rapidly in the trace below. Release
+            it and Task A returns to its normal, slower blink.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>CPU Instruction Speed &amp; Idle Fast-Forward Speed</h3>
+          <p>
+            Run doesn't move at one fixed pace:
+            <strong>CPU Instruction Speed</strong> controls how long each line
+            of Task A or B's own code stays on screen while one of them has the
+            CPU, and <strong>Idle Fast-Forward Speed</strong> separately
+            controls how quickly ticks pass while idle is just spinning with
+            nothing to do. Turn the first one up to slowly watch every line get
+            entered; turn the second one down so you're not stuck watching
+            hundreds of uneventful idle ticks between the interesting parts.
+          </p>
+        </div>
+        <div class="how-tile">
+          <h3>Try it</h3>
+          <p>
+            Set Task A and Task B to the same delay and watch them wake on the
+            same tick every cycle (ties are broken by task order here, a
+            simplification of real round-robin behavior between equal-priority
+            tasks). Set them to very different values and watch the trace below
+            fill mostly with idle time punctuated by short bursts of A or B. Use
+            Step to advance exactly one tick at a time, like a debugger, or Run
+            to let it play continuously.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ---- DOM refs ----
+      const themeToggleBtn = document.getElementById("themeToggleBtn");
+      const ganttCanvas = document.getElementById("ganttCanvas");
+      const ganttCtx = ganttCanvas.getContext("2d");
+      const powerCanvas = document.getElementById("powerCanvas");
+      const powerCtx = powerCanvas.getContext("2d");
+      const taskPaceRange = document.getElementById("taskPaceRange");
+      const idlePaceRange = document.getElementById("idlePaceRange");
+      const zoomRange = document.getElementById("zoomRange");
+      const tickValEl = document.getElementById("tickVal");
+      const delayAInput = document.getElementById("delayA");
+      const delayAFastInput = document.getElementById("delayAFast");
+      const delayBInput = document.getElementById("delayB");
+      const stepBtn = document.getElementById("stepBtn");
+      const runBtn = document.getElementById("runBtn");
+      const resetBtn = document.getElementById("resetBtn");
+      const userButton = document.getElementById("userButton");
+
+      // ---- Theme (shared preference key with the other visualizations) ----
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+        themeToggleBtn.textContent =
+          theme === "light" ? "🌙 Dark Theme" : "☀️ Light Theme";
+      }
+      themeToggleBtn.addEventListener("click", () => {
+        const next =
+          document.documentElement.getAttribute("data-theme") === "light"
+            ? "dark"
+            : "light";
+        applyTheme(next);
+        try {
+          localStorage.setItem("spiVizTheme", next);
+        } catch (e) {
+          // Private browsing / blocked storage -- theme just won't persist.
+        }
+      });
+      (function loadInitialTheme() {
+        let saved = null;
+        try {
+          saved = localStorage.getItem("spiVizTheme");
+        } catch (e) {
+          // Ignore -- fall back to the default theme below.
+        }
+        applyTheme(saved === "light" ? "light" : "dark");
+      })();
+
+      // ---- Task model ----
+      // Each task's code is a fixed array of display lines; only some of
+      // them are "executable" (ever get a turn as the current line) --
+      // loop/brace/if/else lines are shown for real C++ correctness but
+      // never themselves highlighted, since nothing meaningful happens
+      // when "executing" them in this simplified model.
+      const IDLE_CODE = [
+        { text: "while (true)", exec: false },
+        { text: "{", exec: false },
+        { text: "    enter_low_power(); /* __WFI() */", exec: true },
+        { text: "}", exec: false },
+      ];
+
+      // Rough CPU current draw for the power readout in the idle task box
+      // -- just two fixed numbers standing in for "core clocked and
+      // fetching instructions" vs "core asleep in WFI". LEDs aren't
+      // factored in here, only the CPU itself.
+      const CPU_CURRENT_ACTIVE_MA = 18.5;
+      const CPU_CURRENT_SLEEP_MA = 4.2;
+      const CPU_VOLTAGE_V = 3.3;
+
+      // Each tick is 1ms of simulated time (the same "ms = ticks"
+      // convention the delay controls use), so this is how many
+      // watt-hours one tick at 1mA works out to: W = V * A, and a tick
+      // is 1/3,600,000 of an hour.
+      const WH_PER_MA_TICK = CPU_VOLTAGE_V / 1000 / 3600000;
+
+      function currentDrawMa(taskId) {
+        return taskId === "IDLE" ? CPU_CURRENT_SLEEP_MA : CPU_CURRENT_ACTIVE_MA;
+      }
+
+      // Formats a watt-hour quantity in whatever unit keeps it readable,
+      // since this simulation's numbers are tiny (fractions of a second
+      // of simulated runtime) compared to real battery-capacity units.
+      function formatWh(wh) {
+        if (wh < 1e-6) return (wh * 1e9).toFixed(2) + " nWh";
+        if (wh < 1e-3) return (wh * 1e6).toFixed(2) + " µWh";
+        if (wh < 1) return (wh * 1e3).toFixed(2) + " mWh";
+        return wh.toFixed(4) + " Wh";
+      }
+
+      // Task A branches on a simulated button read: held SW1 blinks the
+      // LED much faster (short delay) than the normal idle blink rate.
+      // Both vTaskDelay() calls live in the same function -- only one of
+      // the two runs each lap, and the other stays dim to show the branch
+      // not taken, exactly like a real debugger stepping over an if/else.
+      function buildTaskACode(fastMs, normalMs) {
+        return [
+          { text: "while (true)", exec: false },
+          { text: "{", exec: false },
+          {
+            text: "    led_a.level(not led_a.level());",
+            exec: true,
+            isToggle: true,
+          },
+          { text: "    if (button_pressed())", exec: false },
+          { text: "    {", exec: false },
+          {
+            text: "        vTaskDelay(pdMS_TO_TICKS(" + fastMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: fastMs,
+          },
+          { text: "    }", exec: false },
+          { text: "    else", exec: false },
+          { text: "    {", exec: false },
+          {
+            text: "        vTaskDelay(pdMS_TO_TICKS(" + normalMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: normalMs,
+          },
+          { text: "    }", exec: false },
+          { text: "}", exec: false },
+        ];
+      }
+
+      // Custom pc-advance hook for Task A's branch: right after the toggle
+      // line (index 2), route to whichever vTaskDelay() the button state
+      // selects, and skip straight back over the untaken branch once that
+      // call returns. advancePc() falls back to the normal linear/wrap
+      // scan (nextExecLine) whenever this returns null.
+      function taskABranch(task, fromIndex) {
+        if (fromIndex === 2) return state.buttonHeld ? 5 : 9;
+        if (fromIndex === 5) return 2;
+        return null;
+      }
+
+      // Task B just runs a fixed blink pattern -- three quick blinks
+      // followed by a longer pause -- toggling its LED by reading back
+      // the output pin's own driven state, same as Task A. Purely
+      // linear, so the generic nextExecLine() wrap (no custom branchFn)
+      // is all it needs.
+      function buildTaskBCode(shortMs) {
+        const longMs = shortMs * 10;
+        return [
+          { text: "while (true)", exec: false },
+          { text: "{", exec: false },
+          { text: "    led_b.level(false);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: shortMs,
+          },
+          { text: "    led_b.level(true);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: shortMs,
+          },
+          { text: "    led_b.level(false);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + shortMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: shortMs,
+          },
+          { text: "    led_b.level(true);", exec: true, isToggle: true },
+          {
+            text: "    vTaskDelay(pdMS_TO_TICKS(" + longMs + "));",
+            exec: true,
+            isDelay: true,
+            delayMs: longMs,
+          },
+          { text: "}", exec: false },
+        ];
+      }
+
+      function advancePc(task, fromIndex) {
+        if (task.branchFn) {
+          const forced = task.branchFn(task, fromIndex);
+          if (forced !== null && forced !== undefined) return forced;
+        }
+        return nextExecLine(task, fromIndex);
+      }
+
+      // Two independently-controlled paces: taskPaceMs governs how long
+      // each line of Task A/B's own code stays on screen (slow enough to
+      // actually read as it happens), while idlePaceMs governs ticks
+      // spent inside the idle task -- nothing changes on the screen from
+      // one idle tick to the next, so those can fly by independently of
+      // how slowly real task code is stepping.
+      const state = {
+        taskPaceMs: parseInt(taskPaceRange.value, 10),
+        idlePaceMs: parseInt(idlePaceRange.value, 10),
+        zoomTicks: parseInt(zoomRange.value, 10),
+        running: false,
+        tick: 0,
+        buttonHeld: false,
+        energyWh: 0,
+      };
+
+      const taskA = {
+        id: "A",
+        name: "Task A",
+        priority: 1,
+        code: buildTaskACode(4, 20),
+        pc: 2,
+        blocked: false,
+        wakeTick: 0,
+        delayFastMs: 4,
+        delayNormalMs: 20,
+        led: false,
+        pendingAdvance: false,
+        branchFn: taskABranch,
+      };
+      const taskB = {
+        id: "B",
+        name: "Task B",
+        priority: 1,
+        code: buildTaskBCode(10),
+        pc: 2,
+        blocked: false,
+        wakeTick: 0,
+        delayShortMs: 10,
+        led: false,
+        pendingAdvance: false,
+      };
+      const idleTask = {
+        id: "IDLE",
+        name: "Idle Task",
+        priority: 0,
+        code: IDLE_CODE,
+        pc: 2,
+        blocked: false,
+        wakeTick: 0,
+        pendingAdvance: false,
+      };
+      const allTasks = [taskA, taskB, idleTask];
+
+      let runningTaskId = "A"; // who owns the CPU right now
+
+      const sim = { history: [] }; // { tick, runningTaskId }
+
+      function resetSim() {
+        state.tick = 0;
+        state.energyWh = 0;
+        taskA.pc = 2;
+        taskA.blocked = false;
+        taskA.wakeTick = 0;
+        taskA.led = false;
+        taskA.pendingAdvance = false;
+        taskB.pc = 2;
+        taskB.blocked = false;
+        taskB.wakeTick = 0;
+        taskB.led = false;
+        taskB.pendingAdvance = false;
+        idleTask.pc = 2;
+        idleTask.blocked = false;
+        idleTask.pendingAdvance = false;
+        runningTaskId = "A";
+        sim.history = [];
+      }
+
+      // ---- Scheduler ----
+      // The highest-priority READY task always wins the CPU. Ties are
+      // broken by fixed task order (A, then B, then idle) -- real FreeRTOS
+      // round-robins same-priority tasks on a time slice, which this
+      // simplification skips since neither task ever competes for the CPU
+      // except at the instant both wake on the same tick.
+      function pickRunningTask() {
+        const ready = allTasks.filter((t) => !t.blocked);
+        ready.sort((x, y) => y.priority - x.priority);
+        return ready[0].id;
+      }
+
+      // Advances the system by exactly one tick: wake any tasks whose
+      // delay has expired, let the scheduler pick who should run, then
+      // execute exactly one line of that task.
+      function nextExecLine(task, from) {
+        let next = from + 1;
+        while (next < task.code.length && !task.code[next].exec) next++;
+        if (next >= task.code.length) next = task.code.findIndex((l) => l.exec);
+        return next;
+      }
+
+      function step() {
+        state.tick += 1;
+
+        // A task's pc stays parked on its vTaskDelay() line for as long as
+        // it's blocked -- that's genuinely where execution is paused,
+        // waiting for the call to return. Only once it actually wakes does
+        // it advance past that line (wrapping back to the top of the loop
+        // body, since the delay is the last statement there).
+        for (const t of allTasks) {
+          if (t.blocked && state.tick >= t.wakeTick) {
+            t.blocked = false;
+            t.pc = advancePc(t, t.pc);
+          }
+        }
+
+        // A non-blocking line finished on the tick it was rendered as
+        // "current" -- advance past it only now, at the start of the next
+        // tick, so the render() call below this task's execution actually
+        // paints it as current for at least one frame before pc moves on.
+        for (const t of allTasks) {
+          if (t.pendingAdvance) {
+            t.pc = advancePc(t, t.pc);
+            t.pendingAdvance = false;
+          }
+        }
+
+        runningTaskId = pickRunningTask();
+        const running = allTasks.find((t) => t.id === runningTaskId);
+
+        state.energyWh += currentDrawMa(runningTaskId) * WH_PER_MA_TICK;
+
+        const line = running.code[running.pc];
+        if (line.isDelay) {
+          // The call itself just started -- block right here, pc unmoved,
+          // until the wake-up loop above finally steps it past this line.
+          running.blocked = true;
+          running.wakeTick =
+            state.tick +
+            (line.delayMs != null ? line.delayMs : running.delayMs);
+        } else {
+          if (line.isToggle) running.led = !running.led;
+          running.pendingAdvance = true;
+        }
+
+        sim.history.push({ tick: state.tick, runningTaskId });
+        const cutoff = state.tick - state.zoomTicks * 2;
+        while (sim.history.length && sim.history[0].tick < cutoff)
+          sim.history.shift();
+
+        render();
+      }
+
+      // ---- Rendering ----
+      function renderCode(containerEl, task, isRunning) {
+        containerEl.innerHTML = "";
+        task.code.forEach((line, i) => {
+          const row = document.createElement("div");
+          row.className = "code-line";
+          const isCurrent = isRunning && i === task.pc;
+          const isPausedHere = task.blocked && i === task.pc;
+          if (isCurrent) row.classList.add("current");
+          else if (isPausedHere) row.classList.add("paused-here");
+          const ln = document.createElement("span");
+          ln.className = "ln";
+          ln.textContent = String(i + 1);
+          const txt = document.createElement("span");
+          txt.textContent = line.text;
+          row.appendChild(ln);
+          row.appendChild(txt);
+          containerEl.appendChild(row);
+        });
+      }
+
+      function taskStateLabel(task, isRunning) {
+        if (isRunning) return "RUNNING";
+        if (task.blocked) return "BLOCKED";
+        return "READY";
+      }
+
+      function render() {
+        tickValEl.textContent = state.tick;
+
+        const specs = [
+          {
+            task: taskA,
+            box: "taskBoxA",
+            code: "codeA",
+            stateEl: "stateA",
+            countdown: "countdownA",
+            led: "ledA",
+          },
+          {
+            task: taskB,
+            box: "taskBoxB",
+            code: "codeB",
+            stateEl: "stateB",
+            countdown: "countdownB",
+            led: "ledB",
+          },
+          {
+            task: idleTask,
+            box: "taskBoxIdle",
+            code: "codeIdle",
+            stateEl: "stateIdle",
+            countdown: "countdownIdle",
+          },
+        ];
+
+        for (const spec of specs) {
+          const isRunning = runningTaskId === spec.task.id;
+          const boxEl = document.getElementById(spec.box);
+          boxEl.classList.toggle("running", isRunning);
+
+          renderCode(document.getElementById(spec.code), spec.task, isRunning);
+
+          if (spec.led) {
+            document
+              .getElementById(spec.led)
+              .classList.toggle("on", spec.task.led);
+          }
+
+          const label = taskStateLabel(spec.task, isRunning);
+          const stateEl = document.getElementById(spec.stateEl);
+          stateEl.textContent = label;
+          stateEl.classList.toggle("running", label === "RUNNING");
+          stateEl.classList.toggle("blocked", label === "BLOCKED");
+
+          const countdownEl = document.getElementById(spec.countdown);
+          if (spec.task.blocked) {
+            countdownEl.textContent =
+              "Blocked — wakes in " +
+              (spec.task.wakeTick - state.tick) +
+              " tick(s)";
+          } else {
+            countdownEl.innerHTML = "&nbsp;";
+          }
+        }
+
+        const idleRunning = runningTaskId === "IDLE";
+        const currentMa = currentDrawMa(runningTaskId);
+        document.getElementById("currentDrawVal").textContent =
+          currentMa.toFixed(1) +
+          " mA (" +
+          (idleRunning ? "WFI sleep" : "active") +
+          ")";
+        document.getElementById("energyVal").textContent = formatWh(
+          state.energyWh,
+        );
+
+        drawGantt();
+        drawPowerGraph();
+        updateButtonAvailability();
+      }
+
+      function updateButtonAvailability() {
+        runBtn.textContent = state.running ? "Pause" : "Run";
+        runBtn.classList.toggle("running", state.running);
+        stepBtn.disabled = state.running;
+      }
+
+      // ---- Canvas ----
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = ganttCanvas.parentElement.getBoundingClientRect();
+        ganttCanvas.width = Math.round(rect.width * dpr);
+        ganttCanvas.height = Math.round(rect.height * dpr);
+        ganttCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const powerRect = powerCanvas.parentElement.getBoundingClientRect();
+        powerCanvas.width = Math.round(powerRect.width * dpr);
+        powerCanvas.height = Math.round(powerRect.height * dpr);
+        powerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      function themeColor(varName) {
+        return getComputedStyle(document.documentElement)
+          .getPropertyValue(varName)
+          .trim();
+      }
+
+      function drawGantt() {
+        const rect = ganttCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        ganttCtx.clearRect(0, 0, w, h);
+
+        const padL = 10;
+        const padR = 10;
+        const padT = 10;
+        const padB = 10;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        ganttCtx.strokeStyle = themeColor("--grid-line");
+        ganttCtx.lineWidth = 1;
+        for (let i = 0; i <= 20; i++) {
+          const x = padL + (gw / 20) * i;
+          ganttCtx.beginPath();
+          ganttCtx.moveTo(x, padT);
+          ganttCtx.lineTo(x, padT + gh);
+          ganttCtx.stroke();
+        }
+
+        const span = state.zoomTicks;
+        const cutoff = state.tick - span;
+        const colorFor = {
+          A: themeColor("--cyan"),
+          B: themeColor("--orange"),
+          IDLE: themeColor("--panel-border"),
+        };
+
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const x0 = padL + gw * ((s.tick - 1 - cutoff) / span);
+          const x1 = padL + gw * ((s.tick - cutoff) / span);
+          ganttCtx.fillStyle = colorFor[s.runningTaskId];
+          ganttCtx.fillRect(x0, padT, Math.max(x1 - x0, 1), gh);
+        }
+
+        ganttCtx.strokeStyle = themeColor("--grid-line-strong");
+        ganttCtx.lineWidth = 1.5;
+        ganttCtx.strokeRect(padL, padT, gw, gh);
+      }
+
+      // Reuses the same sim.history/zoom window as the scheduler trace so
+      // the two graphs stay in sync tick-for-tick -- current draw is just
+      // a step function of "was the CPU active or asleep in WFI that tick."
+      function drawPowerGraph() {
+        const rect = powerCanvas.parentElement.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        powerCtx.clearRect(0, 0, w, h);
+
+        const padL = 6;
+        const padR = 6;
+        const padT = 6;
+        const padB = 6;
+        const gw = w - padL - padR;
+        const gh = h - padT - padB;
+
+        const span = state.zoomTicks;
+        const cutoff = state.tick - span;
+        // Headroom above the real max so the active level draws a little
+        // below the top edge instead of looking clipped against it.
+        const axisMax = CPU_CURRENT_ACTIVE_MA * 1.25;
+        const yFor = (ma) => padT + gh - (ma / axisMax) * gh;
+
+        powerCtx.beginPath();
+        let started = false;
+        for (const s of sim.history) {
+          if (s.tick < cutoff) continue;
+          const ma = currentDrawMa(s.runningTaskId);
+          const x0 = padL + gw * ((s.tick - 1 - cutoff) / span);
+          const x1 = padL + gw * ((s.tick - cutoff) / span);
+          const y = yFor(ma);
+          if (!started) {
+            powerCtx.moveTo(x0, y);
+            started = true;
+          } else {
+            powerCtx.lineTo(x0, y);
+          }
+          powerCtx.lineTo(x1, y);
+        }
+        if (started) {
+          powerCtx.strokeStyle = themeColor("--orange");
+          powerCtx.lineWidth = 1.5;
+          powerCtx.stroke();
+        }
+
+        powerCtx.strokeStyle = themeColor("--grid-line-strong");
+        powerCtx.lineWidth = 1;
+        powerCtx.strokeRect(padL, padT, gw, gh);
+      }
+
+      // ---- Main loop (auto-play) ----
+      let lastTs = null;
+      let stepAcc = 0;
+
+      function loop(ts) {
+        if (!state.running) {
+          lastTs = null;
+          return;
+        }
+        if (lastTs === null) lastTs = ts;
+        let dt = ts - lastTs;
+        lastTs = ts;
+        dt = Math.min(dt, 200);
+
+        stepAcc += dt;
+        // Re-read the pace on every iteration, not just once per frame,
+        // based on who actually ran the tick that just completed. This is
+        // one tick "behind" -- right as a task's burst ends and idle
+        // takes over, that first idle tick still gets paced at the
+        // slower task speed once, before correctly switching to idle
+        // speed for the rest of the wait. The alternative (deciding from
+        // a prediction of who runs *next*) sounds more precise, but it
+        // mis-paces the *last* idle tick right before a task wakes up
+        // instead -- which is worse, since it visibly delays the wake-up
+        // moment itself rather than just lingering slightly after a
+        // burst that already finished.
+        while (true) {
+          const msPerTick =
+            runningTaskId === "IDLE" ? state.idlePaceMs : state.taskPaceMs;
+          if (stepAcc < msPerTick) break;
+          stepAcc -= msPerTick;
+          step();
+        }
+        requestAnimationFrame(loop);
+      }
+
+      // ---- Event wiring ----
+      taskPaceRange.addEventListener("input", (e) => {
+        state.taskPaceMs = parseInt(e.target.value, 10);
+        document.getElementById("taskPaceVal").textContent = state.taskPaceMs;
+      });
+      idlePaceRange.addEventListener("input", (e) => {
+        state.idlePaceMs = parseInt(e.target.value, 10);
+        document.getElementById("idlePaceVal").textContent = state.idlePaceMs;
+      });
+
+      zoomRange.addEventListener("input", (e) => {
+        state.zoomTicks = parseInt(e.target.value, 10);
+        document.getElementById("zoomVal").textContent = state.zoomTicks;
+      });
+
+      delayAInput.addEventListener("input", () => {
+        const v = parseInt(delayAInput.value, 10);
+        if (Number.isFinite(v) && v > 0) {
+          taskA.delayNormalMs = v;
+          taskA.code = buildTaskACode(taskA.delayFastMs, taskA.delayNormalMs);
+          render();
+        }
+      });
+      delayAFastInput.addEventListener("input", () => {
+        const v = parseInt(delayAFastInput.value, 10);
+        if (Number.isFinite(v) && v > 0) {
+          taskA.delayFastMs = v;
+          taskA.code = buildTaskACode(taskA.delayFastMs, taskA.delayNormalMs);
+          render();
+        }
+      });
+      delayBInput.addEventListener("input", () => {
+        const v = parseInt(delayBInput.value, 10);
+        if (Number.isFinite(v) && v > 0) {
+          taskB.delayShortMs = v;
+          taskB.code = buildTaskBCode(taskB.delayShortMs);
+          render();
+        }
+      });
+
+      function setButtonHeld(held) {
+        state.buttonHeld = held;
+        userButton.classList.toggle("held", held);
+      }
+      userButton.addEventListener("mousedown", () => setButtonHeld(true));
+      userButton.addEventListener("mouseup", () => setButtonHeld(false));
+      userButton.addEventListener("mouseleave", () => setButtonHeld(false));
+      userButton.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        setButtonHeld(true);
+      });
+      userButton.addEventListener("touchend", (e) => {
+        e.preventDefault();
+        setButtonHeld(false);
+      });
+
+      stepBtn.addEventListener("click", () => {
+        if (state.running) return;
+        step();
+      });
+
+      runBtn.addEventListener("click", () => {
+        state.running = !state.running;
+        updateButtonAvailability();
+        if (state.running) {
+          lastTs = null;
+          stepAcc = 0;
+          requestAnimationFrame(loop);
+        }
+      });
+
+      resetBtn.addEventListener("click", () => {
+        state.running = false;
+        lastTs = null;
+        stepAcc = 0;
+        state.taskPaceMs = 380;
+        taskPaceRange.value = 380;
+        document.getElementById("taskPaceVal").textContent = 380;
+        state.idlePaceMs = 16;
+        idlePaceRange.value = 16;
+        document.getElementById("idlePaceVal").textContent = 16;
+        state.zoomTicks = 80;
+        zoomRange.value = 80;
+        document.getElementById("zoomVal").textContent = 80;
+        delayAInput.value = 20;
+        delayAFastInput.value = 4;
+        delayBInput.value = 10;
+        taskA.delayNormalMs = 20;
+        taskA.delayFastMs = 4;
+        taskB.delayShortMs = 10;
+        taskA.code = buildTaskACode(taskA.delayFastMs, taskA.delayNormalMs);
+        taskB.code = buildTaskBCode(taskB.delayShortMs);
+        setButtonHeld(false);
+        resetSim();
+        render();
+      });
+
+      // ---- Init ----
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+      render();
+    </script>
+  </body>
+</html>
